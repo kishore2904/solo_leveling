@@ -13,7 +13,7 @@ class DailyQuestsScreen extends StatefulWidget {
 
 class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
   late List<DailyQuest> quests;
-  int completedCount = 0;
+  int completedQuestCount = 0;
 
   @override
   void initState() {
@@ -77,23 +77,23 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
     final today = DateTime.now();
     final dateKey = 'quests_${today.year}_${today.month}_${today.day}';
 
-    final savedQuestsJson = prefs.getString(dateKey);
-    if (savedQuestsJson != null) {
-      final savedQuests = jsonDecode(savedQuestsJson) as List;
+    final savedQuestsJsonData = prefs.getString(dateKey);
+    if (savedQuestsJsonData != null) {
+      final decodedQuestList = jsonDecode(savedQuestsJsonData) as List;
       for (var i = 0; i < quests.length; i++) {
-        if (i < savedQuests.length) {
-          quests[i].isCompleted = savedQuests[i]['isCompleted'] ?? false;
-          if (savedQuests[i]['completedAt'] != null) {
-            quests[i].completedAt = DateTime.parse(savedQuests[i]['completedAt']);
+        if (i < decodedQuestList.length) {
+          quests[i].isCompleted = decodedQuestList[i]['isCompleted'] ?? false;
+          if (decodedQuestList[i]['completedAt'] != null) {
+            quests[i].completedAt = DateTime.parse(decodedQuestList[i]['completedAt']);
           }
         }
       }
     }
 
-    _updateCompletedCount();
+    _updateCompletedQuestCount();
   }
 
-  Future<void> _toggleQuestComplete(int index) async {
+  Future<void> _toggleQuestCompletion(int index) async {
     setState(() {
       quests[index].isCompleted = !quests[index].isCompleted;
       if (quests[index].isCompleted) {
@@ -103,12 +103,12 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
       }
     });
 
-    _updateCompletedCount();
+    _updateCompletedQuestCount();
     await _saveQuestStatus();
   }
 
-  void _updateCompletedCount() {
-    completedCount = quests.where((q) => q.isCompleted).length;
+  void _updateCompletedQuestCount() {
+    completedQuestCount = quests.where((q) => q.isCompleted).length;
   }
 
   Future<void> _saveQuestStatus() async {
@@ -120,7 +120,7 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
     await prefs.setString(dateKey, jsonEncode(questsJson));
   }
 
-  int _getTotalXP() {
+  int _calculateTotalEarnedXp() {
     return quests.fold(
       0,
       (sum, quest) => quest.isCompleted ? sum + quest.xpReward : sum,
@@ -172,7 +172,7 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '$completedCount/${quests.length} Completed',
+                            '$completedQuestCount/${quests.length} Completed',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -194,7 +194,7 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              '+${_getTotalXP()} XP',
+                              '+${_calculateTotalEarnedXp()} XP',
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -210,7 +210,7 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
                         child: LinearProgressIndicator(
                           value: quests.isEmpty
                               ? 0
-                              : completedCount / quests.length,
+                              : completedQuestCount / quests.length,
                           minHeight: 12,
                           backgroundColor: Colors.grey[900],
                           valueColor: const AlwaysStoppedAnimation<Color>(
@@ -229,7 +229,7 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: quests.length,
                   itemBuilder: (context, index) {
-                    return _buildQuestCard(index);
+                    return _buildQuestListCard(index);
                   },
                 ),
                 const SizedBox(height: 24),
@@ -241,31 +241,31 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
     );
   }
 
-  Widget _buildQuestCard(int index) {
+  Widget _buildQuestListCard(int index) {
     final quest = quests[index];
-    final color = Color(int.parse('0xFF${quest.color.replaceFirst('#', '')}'));
+    final questAccentColor = Color(int.parse('0xFF${quest.color.replaceFirst('#', '')}'));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            color.withOpacity(0.15),
-            color.withOpacity(0.05),
+            questAccentColor.withOpacity(0.15),
+            questAccentColor.withOpacity(0.05),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: color.withOpacity(0.4),
+          color: questAccentColor.withOpacity(0.4),
           width: 1,
         ),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => _toggleQuestComplete(index),
+          onTap: () => _toggleQuestCompletion(index),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(14),
@@ -281,15 +281,15 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
                     gradient: quest.isCompleted
                         ? LinearGradient(
                             colors: [
-                              color.withOpacity(0.8),
-                              color,
+                              questAccentColor.withOpacity(0.8),
+                              questAccentColor,
                             ],
                           )
                         : null,
                     border: quest.isCompleted
                         ? null
                         : Border.all(
-                            color: color,
+                            color: questAccentColor,
                             width: 2,
                           ),
                   ),
@@ -336,14 +336,14 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: color.withOpacity(0.2),
+                              color: questAccentColor.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
                               quest.difficulty,
                               style: TextStyle(
                                 fontSize: 10,
-                                color: color,
+                                color: questAccentColor,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -372,7 +372,7 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: color,
+                        color: questAccentColor,
                       ),
                     ),
                     const Text(

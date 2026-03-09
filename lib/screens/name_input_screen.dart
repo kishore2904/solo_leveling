@@ -12,18 +12,18 @@ class NameInputScreen extends StatefulWidget {
 }
 
 class _NameInputScreenState extends State<NameInputScreen> {
-  final TextEditingController _nameController = TextEditingController();
-  bool _isNameEntered = false;
+  final TextEditingController _playerNameController = TextEditingController();
+  bool _isPlayerNameEntered = false;
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _playerNameController.dispose();
     super.dispose();
   }
 
-  void _submitName() {
-    if (_nameController.text.trim().isNotEmpty) {
-      widget.onNameSubmitted(_nameController.text.trim());
+  void _submitPlayerName() {
+    if (_playerNameController.text.trim().isNotEmpty) {
+      widget.onNameSubmitted(_playerNameController.text.trim());
     }
   }
 
@@ -73,10 +73,10 @@ class _NameInputScreenState extends State<NameInputScreen> {
                   ),
                   const SizedBox(height: 30),
                   TextField(
-                    controller: _nameController,
+                    controller: _playerNameController,
                     onChanged: (value) {
                       setState(() {
-                        _isNameEntered = value.trim().isNotEmpty;
+                        _isPlayerNameEntered = value.trim().isNotEmpty;
                       });
                     },
                     style: const TextStyle(
@@ -119,7 +119,7 @@ class _NameInputScreenState extends State<NameInputScreen> {
                     width: double.infinity,
                     height: 50,
                     decoration: BoxDecoration(
-                      gradient: _isNameEntered
+                      gradient: _isPlayerNameEntered
                           ? const LinearGradient(
                               colors: [
                                 Color(0xFF9F7AEA),
@@ -137,7 +137,7 @@ class _NameInputScreenState extends State<NameInputScreen> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: ElevatedButton(
-                      onPressed: _isNameEntered ? _submitName : null,
+                      onPressed: _isPlayerNameEntered ? _submitPlayerName : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         disabledBackgroundColor: Colors.transparent,
@@ -151,7 +151,7 @@ class _NameInputScreenState extends State<NameInputScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: _isNameEntered ? Colors.white : Colors.grey,
+                          color: _isPlayerNameEntered ? Colors.white : Colors.grey,
                         ),
                       ),
                     ),

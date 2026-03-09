@@ -31,11 +31,11 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> _loadPlayerName() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedName = prefs.getString('player_name');
+    final savedPlayerName = prefs.getString('player_name');
     
     setState(() {
-      if (savedName != null && savedName.isNotEmpty) {
-        _playerName = savedName;
+      if (savedPlayerName != null && savedPlayerName.isNotEmpty) {
+        _playerName = savedPlayerName;
         // Skip intro and splash if name is already saved
         _introComplete = true;
         _splashComplete = true;
@@ -73,11 +73,11 @@ class _MyAppState extends State<MyApp> {
         scaffoldBackgroundColor: AppColors.darkBg,
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.neonBlue),
       ),
-      home: _isLoading ? const SizedBox() : _buildHome(),
+      home: _isLoading ? const SizedBox() : _buildInitialScreen(),
     );
   }
 
-  Widget _buildHome() {
+  Widget _buildInitialScreen() {
     // Show intro screen
     if (!_introComplete) {
       return IntroScreen(onGetStarted: _onIntroComplete);

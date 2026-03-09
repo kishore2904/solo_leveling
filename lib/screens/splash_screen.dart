@@ -12,10 +12,10 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  double _progress = 0.0;
-  String _statusText = 'Awakening Hunter...';
+  double _loadingProgress = 0.0;
+  String _loadingStatusText = 'Awakening Hunter...';
 
-  final List<String> _statusMessages = [
+  final List<String> _loadingStatusMessages = [
     'Awakening Hunter...',
     'Loading System...',
     'Analyzing Abilities...',
@@ -25,17 +25,17 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _startLoading();
+    _startLoadingSequence();
   }
 
-  void _startLoading() async {
+  void _startLoadingSequence() async {
     for (int i = 0; i <= 100; i++) {
       await Future.delayed(const Duration(milliseconds: 50));
       setState(() {
-        _progress = i / 100;
+        _loadingProgress = i / 100;
         // Update status text based on progress
-        int messageIndex = (i ~/ 25).clamp(0, _statusMessages.length - 1);
-        _statusText = _statusMessages[messageIndex];
+        int statusMessageIndex = (i ~/ 25).clamp(0, _loadingStatusMessages.length - 1);
+        _loadingStatusText = _loadingStatusMessages[statusMessageIndex];
       });
     }
     // Call the callback after loading is complete
@@ -95,7 +95,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: LinearProgressIndicator(
-                          value: _progress,
+                          value: _loadingProgress,
                           minHeight: 12,
                           backgroundColor: const Color(0xFF2D1B4E).withOpacity(0.5),
                           valueColor: const AlwaysStoppedAnimation<Color>(
@@ -107,8 +107,8 @@ class _SplashScreenState extends State<SplashScreen> {
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
                         child: Text(
-                          _statusText,
-                          key: ValueKey<String>(_statusText),
+                          _loadingStatusText,
+                          key: ValueKey<String>(_loadingStatusText),
                           style: const TextStyle(
                             fontSize: 14,
                             color: Color(0xFF9F7AEA),
