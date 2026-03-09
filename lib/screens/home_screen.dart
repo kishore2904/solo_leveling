@@ -48,27 +48,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadDailyStreak() async {
     final prefs = await SharedPreferences.getInstance();
-    final lastLoginDate = prefs.getString('last_login_date');
-    final streak = prefs.getInt('daily_streak') ?? 0;
+    final lastLoginDateString = prefs.getString('last_login_date');
+    final savedStreakCount = prefs.getInt('daily_streak') ?? 0;
     
     final today = DateTime.now();
-    final todayString = '${today.year}-${today.month}-${today.day}';
+    final todayDateString = '${today.year}-${today.month}-${today.day}';
     
-    if (lastLoginDate == null || lastLoginDate != todayString) {
+    if (lastLoginDateString == null || lastLoginDateString != todayDateString) {
       // Check if yesterday was logged in to maintain streak
       final yesterday = today.subtract(const Duration(days: 1));
-      final yesterdayString = '${yesterday.year}-${yesterday.month}-${yesterday.day}';
+      final yesterdayDateString = '${yesterday.year}-${yesterday.month}-${yesterday.day}';
       
-      if (lastLoginDate == yesterdayString) {
-        dailyStreak = streak + 1;
+      if (lastLoginDateString == yesterdayDateString) {
+        dailyStreak = savedStreakCount + 1;
       } else {
-        dailyStreak = lastLoginDate == null ? 1 : 1; // Reset if gap
+        dailyStreak = lastLoginDateString == null ? 1 : 1; // Reset if gap
       }
       
-      await prefs.setString('last_login_date', todayString);
+      await prefs.setString('last_login_date', todayDateString);
       await prefs.setInt('daily_streak', dailyStreak);
     } else {
-      dailyStreak = streak;
+      dailyStreak = savedStreakCount;
     }
     
     setState(() {});
@@ -79,17 +79,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final today = DateTime.now();
     final dateKey = 'quests_${today.year}_${today.month}_${today.day}';
     
-    final savedQuestsJson = prefs.getString(dateKey);
-    if (savedQuestsJson != null) {
-      final savedQuests = jsonDecode(savedQuestsJson) as List;
+    final savedQuestsJsonData = prefs.getString(dateKey);
+    if (savedQuestsJsonData != null) {
+      final decodedQuestList = jsonDecode(savedQuestsJsonData) as List;
       todayXp = 0;
-      for (var quest in savedQuests) {
+      for (var quest in decodedQuestList) {
         if (quest['isCompleted'] ?? false) {
-          final xpValue = quest['xpReward'];
-          if (xpValue is int) {
-            todayXp += xpValue;
-          } else if (xpValue is num) {
-            todayXp += xpValue.toInt();
+          final questXpReward = quest['xpReward'];
+          if (questXpReward is int) {
+            todayXp += questXpReward;
+          } else if (questXpReward is num) {
+            todayXp += questXpReward.toInt();
           }
         }
       }
@@ -106,16 +106,16 @@ class _HomeScreenState extends State<HomeScreen> {
       final date = DateTime.now().subtract(Duration(days: i));
       final dateKey = 'quests_${date.year}_${date.month}_${date.day}';
       
-      final savedQuestsJson = prefs.getString(dateKey);
-      if (savedQuestsJson != null) {
-        final savedQuests = jsonDecode(savedQuestsJson) as List;
-        for (var quest in savedQuests) {
+      final savedQuestsJsonData = prefs.getString(dateKey);
+      if (savedQuestsJsonData != null) {
+        final decodedQuestList = jsonDecode(savedQuestsJsonData) as List;
+        for (var quest in decodedQuestList) {
           if (quest['isCompleted'] ?? false) {
-            final xpValue = quest['xpReward'];
-            if (xpValue is int) {
-              weeklyXp += xpValue;
-            } else if (xpValue is num) {
-              weeklyXp += xpValue.toInt();
+            final questXpReward = quest['xpReward'];
+            if (questXpReward is int) {
+              weeklyXp += questXpReward;
+            } else if (questXpReward is num) {
+              weeklyXp += questXpReward.toInt();
             }
             weeklyCompletion[6 - i] = true;
           }
@@ -570,8 +570,8 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: List.generate(7, (index) {
-              const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-              final isCompleted = weeklyCompletion[index];
+              const dayAbbreviations = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+              final isDayCompleted = weeklyCompletion[index];
               return Column(
                 children: [
                   Container(
@@ -579,21 +579,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 32,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: isCompleted
+                      color: isDayCompleted
                           ? const Color(0xFF00D9FF).withOpacity(0.3)
                           : Colors.grey[900],
                       border: Border.all(
-                        color: isCompleted
+                        color: isDayCompleted
                             ? const Color(0xFF00D9FF)
                             : Colors.grey[700]!,
                         width: 1,
                       ),
                     ),
                     child: Center(
-                      child: isCompleted
+                      child: isDayCompleted
                           ? const Icon(Icons.check, color: Color(0xFF00D9FF), size: 16)
                           : Text(
-                              days[index],
+                              dayAbbreviations[index],
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.white54,
@@ -604,7 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    days[index],
+                    dayAbbreviations[index],
                     style: const TextStyle(
                       fontSize: 10,
                       color: Colors.white54,
@@ -620,8 +620,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildAchievementsSection() {
-    final unlockedAchievements = achievements.where((a) => a.isUnlocked).toList();
-    final recentAchievements = unlockedAchievements.take(3).toList();
+    final unlockedAchievementList = achievements.where((a) => a.isUnlocked).toList();
+    final recentUnlockedAchievements = unlockedAchievementList.take(3).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -636,7 +636,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        if (recentAchievements.isEmpty)
+        if (recentUnlockedAchievements.isEmpty)
           Container(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -664,7 +664,7 @@ class _HomeScreenState extends State<HomeScreen> {
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            children: recentAchievements.map((achievement) {
+            children: recentUnlockedAchievements.map((achievement) {
               return _buildAchievementCard(achievement);
             }).toList(),
           ),
@@ -732,12 +732,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStatCard(
-    String label,
-    int current,
-    int max,
+    String statLabel,
+    int currentStatValue,
+    int maximumStatValue,
     Color color,
   ) {
-    double percentage = current / max;
+    double statFillPercentage = currentStatValue / maximumStatValue;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -761,7 +761,7 @@ class _HomeScreenState extends State<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            label,
+            statLabel,
             style: const TextStyle(
               fontSize: 12,
               color: Colors.white70,
@@ -772,7 +772,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '$current/$max',
+                '$currentStatValue/$maximumStatValue',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -783,7 +783,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
-                  value: percentage,
+                  value: statFillPercentage,
                   minHeight: 6,
                   backgroundColor: Colors.grey[900],
                   valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -797,7 +797,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActionButton(
-    String label,
+    String actionLabel,
     IconData icon,
     Color color,
     VoidCallback onPressed,
@@ -831,7 +831,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Icon(icon, color: color, size: 20),
                 const SizedBox(width: 12),
                 Text(
-                  label,
+                  actionLabel,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
