@@ -22,6 +22,21 @@ class AppColors {
     Color(0xFF64E7FF),
   ];
   
+  // Progressive Colors (for hydration progress)
+  static const Color progressRed = Color(0xFFFF6B6B);
+  static const Color progressOrange = Color(0xFFFFA500);
+  static const Color progressGreen = Color(0xFF00D9FF);
+  
+  // Hydration Colors
+  static const Color hydrationLight = Color(0xFF64E7FF);
+  static const Color hydrationMedium = Color(0xFF00D9FF);
+  static const Color hydrationDark = Color(0xFF00A8CC);
+  
+  // Status Colors
+  static const Color success = Color(0xFF00D9FF);
+  static const Color warning = Color(0xFFFFA500);
+  static const Color error = Color(0xFFFF6B6B);
+  
   // Other
   static const Color transparent = Colors.transparent;
   static const Color black = Color(0xFF000000);

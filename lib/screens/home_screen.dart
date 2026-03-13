@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../constants/colors.dart';
-import '../models/daily_quest.dart';
 import '../models/achievement.dart';
-import 'daily_quests_screen.dart';
+import '../models/hydration_goal.dart';
+import '../models/hydration_streak.dart';
+import '../models/hydration_log.dart';
+import '../widgets/hydration_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
   final String playerName;
@@ -21,17 +23,31 @@ class _HomeScreenState extends State<HomeScreen> {
   int maxExperience = 1000;
   int hp = 100;
   int maxHp = 100;
-  int mana = 80;
-  int maxMana = 100;
-  int power = 45;
-  int stamina = 75;
-  
+  int intelligence = 80;
+  int maxIntelligence = 100;
+  int strength = 75;
+  int consistency = 65;
+  int resilience = 70;
+
+  // Hydration Feature Data
+  double totalConsumedMl = 0;
+  double dailyGoalMl = 2000;
+  int hydrationStreak = 0;
+
   // New features
   int dailyStreak = 0;
   int todayXp = 0;
   int weeklyXp = 0;
   List<Achievement> achievements = [];
-  List<bool> weeklyCompletion = [true, true, false, true, true, false, true]; // Mon-Sun
+  List<bool> weeklyCompletion = [
+    true,
+    true,
+    false,
+    true,
+    true,
+    false,
+    true,
+  ]; // Mon-Sun
 
   @override
   void initState() {
@@ -44,33 +60,35 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadTodayXp();
     await _loadWeeklyStats();
     await _loadAchievements();
+    await _loadHydrationData();
   }
 
   Future<void> _loadDailyStreak() async {
     final prefs = await SharedPreferences.getInstance();
     final lastLoginDateString = prefs.getString('last_login_date');
     final savedStreakCount = prefs.getInt('daily_streak') ?? 0;
-    
+
     final today = DateTime.now();
     final todayDateString = '${today.year}-${today.month}-${today.day}';
-    
+
     if (lastLoginDateString == null || lastLoginDateString != todayDateString) {
       // Check if yesterday was logged in to maintain streak
       final yesterday = today.subtract(const Duration(days: 1));
-      final yesterdayDateString = '${yesterday.year}-${yesterday.month}-${yesterday.day}';
-      
+      final yesterdayDateString =
+          '${yesterday.year}-${yesterday.month}-${yesterday.day}';
+
       if (lastLoginDateString == yesterdayDateString) {
         dailyStreak = savedStreakCount + 1;
       } else {
         dailyStreak = lastLoginDateString == null ? 1 : 1; // Reset if gap
       }
-      
+
       await prefs.setString('last_login_date', todayDateString);
       await prefs.setInt('daily_streak', dailyStreak);
     } else {
       dailyStreak = savedStreakCount;
     }
-    
+
     setState(() {});
   }
 
@@ -78,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final today = DateTime.now();
     final dateKey = 'quests_${today.year}_${today.month}_${today.day}';
-    
+
     final savedQuestsJsonData = prefs.getString(dateKey);
     if (savedQuestsJsonData != null) {
       final decodedQuestList = jsonDecode(savedQuestsJsonData) as List;
@@ -94,18 +112,49 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     }
-    
+
+    // Load and apply total experience from SharedPreferences
+    await _loadTotalExperience();
+
     setState(() {});
+  }
+
+  Future<void> _loadTotalExperience() async {
+    final prefs = await SharedPreferences.getInstance();
+    experience = prefs.getInt('total_experience') ?? 450;
+    level = prefs.getInt('player_level') ?? 1;
+    maxExperience = prefs.getInt('max_experience') ?? 1000;
+  }
+
+  Future<void> _saveTotalExperience() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('total_experience', experience);
+    await prefs.setInt('player_level', level);
+    await prefs.setInt('max_experience', maxExperience);
+  }
+
+  Future<void> _addExperience(int xpToAdd) async {
+    experience += xpToAdd;
+
+    // Check for level up
+    while (experience >= maxExperience) {
+      experience -= maxExperience;
+      level += 1;
+      maxExperience = (maxExperience * 1.1)
+          .toInt(); // Increase max XP by 10% per level
+    }
+
+    await _saveTotalExperience();
   }
 
   Future<void> _loadWeeklyStats() async {
     final prefs = await SharedPreferences.getInstance();
     weeklyXp = 0;
-    
+
     for (int i = 0; i < 7; i++) {
       final date = DateTime.now().subtract(Duration(days: i));
       final dateKey = 'quests_${date.year}_${date.month}_${date.day}';
-      
+
       final savedQuestsJsonData = prefs.getString(dateKey);
       if (savedQuestsJsonData != null) {
         final decodedQuestList = jsonDecode(savedQuestsJsonData) as List;
@@ -122,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
     }
-    
+
     setState(() {});
   }
 
@@ -177,7 +226,35 @@ class _HomeScreenState extends State<HomeScreen> {
         isUnlocked: dailyStreak >= 7,
       ),
     ];
-    
+
+    setState(() {});
+  }
+
+  Future<void> _loadHydrationData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Load goal
+    final goalJson = prefs.getString('hydration_goal');
+    if (goalJson != null) {
+      final goal = HydrationGoal.fromJson(jsonDecode(goalJson));
+      dailyGoalMl = goal.dailyGoalMl;
+    }
+
+    // Load today's logs
+    final logsJson = prefs.getStringList('hydration_logs_today') ?? [];
+    totalConsumedMl = 0;
+    for (var logJson in logsJson) {
+      final log = HydrationLog.fromJson(jsonDecode(logJson));
+      totalConsumedMl += log.amountMl;
+    }
+
+    // Load streak
+    final streakJson = prefs.getString('hydration_streak');
+    if (streakJson != null) {
+      final streak = HydrationStreak.fromJson(jsonDecode(streakJson));
+      hydrationStreak = streak.currentStreak;
+    }
+
     setState(() {});
   }
 
@@ -188,7 +265,10 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 20.0,
+            ),
             child: Column(
               children: [
                 // Header with Player Name and Level
@@ -239,10 +319,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFF9F7AEA),
-                              Color(0xFF00D9FF),
-                            ],
+                            colors: [Color(0xFF9F7AEA), Color(0xFF00D9FF)],
                           ),
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -308,25 +385,53 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 24),
 
+                // Hydration Mini Widget
+                HydrationMiniWidget(
+                  consumed: totalConsumedMl,
+                  goal: dailyGoalMl,
+                  streak: hydrationStreak,
+                  onTap: () {
+                    Navigator.of(context).pushNamed('/hydration/dashboard');
+                  },
+                ),
+                const SizedBox(height: 24),
+
                 // Weekly Stats
                 _buildWeeklyStatsCard(),
                 const SizedBox(height: 24),
 
                 // Stats Grid
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
+                Column(
                   children: [
                     _buildStatCard('HP', hp, maxHp, const Color(0xFFFF6B6B)),
+                    const SizedBox(height: 12),
                     _buildStatCard(
-                        'Mana', mana, maxMana, const Color(0xFF4B7AFF)),
+                      'Intelligence',
+                      intelligence,
+                      maxIntelligence,
+                      const Color(0xFF4B7AFF),
+                    ),
+                    const SizedBox(height: 12),
                     _buildStatCard(
-                        'Power', power, 100, const Color(0xFF9F7AEA)),
+                      'Strength',
+                      strength,
+                      100,
+                      const Color(0xFF9F7AEA),
+                    ),
+                    const SizedBox(height: 12),
                     _buildStatCard(
-                        'Stamina', stamina, 100, const Color(0xFFFFB74D)),
+                      'Consistency',
+                      consistency,
+                      100,
+                      const Color(0xFFFFB74D),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildStatCard(
+                      'Resilience',
+                      resilience,
+                      100,
+                      const Color(0xFFFF8C42),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 28),
@@ -334,53 +439,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Recent Achievements
                 _buildAchievementsSection(),
                 const SizedBox(height: 28),
-
-                // Quick Action Buttons
-                const Text(
-                  'AVAILABLE ACTIONS',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white54,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildActionButton(
-                  'Dungeons',
-                  Icons.map,
-                  const Color(0xFF9F7AEA),
-                  () {},
-                ),
-                const SizedBox(height: 12),
-                _buildActionButton(
-                  'Quests',
-                  Icons.assignment,
-                  const Color(0xFF00D9FF),
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const DailyQuestsScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-                _buildActionButton(
-                  'Inventory',
-                  Icons.backpack,
-                  const Color(0xFFFFB74D),
-                  () {},
-                ),
-                const SizedBox(height: 12),
-                _buildActionButton(
-                  'Status',
-                  Icons.person,
-                  const Color(0xFFFF6B6B),
-                  () {},
-                ),
-                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -422,10 +480,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Text(
-                    '🔥',
-                    style: TextStyle(fontSize: 24),
-                  ),
+                  const Text('🔥', style: TextStyle(fontSize: 24)),
                   const SizedBox(width: 8),
                   Text(
                     '$dailyStreak',
@@ -438,10 +493,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 4),
                   const Text(
                     'days',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white70,
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.white70),
                   ),
                 ],
               ),
@@ -516,10 +568,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text(
-              '⭐',
-              style: TextStyle(fontSize: 24),
-            ),
+            child: const Text('⭐', style: TextStyle(fontSize: 24)),
           ),
         ],
       ),
@@ -591,7 +640,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: Center(
                       child: isDayCompleted
-                          ? const Icon(Icons.check, color: Color(0xFF00D9FF), size: 16)
+                          ? const Icon(
+                              Icons.check,
+                              color: Color(0xFF00D9FF),
+                              size: 16,
+                            )
                           : Text(
                               dayAbbreviations[index],
                               style: const TextStyle(
@@ -605,10 +658,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 4),
                   Text(
                     dayAbbreviations[index],
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Colors.white54,
-                    ),
+                    style: const TextStyle(fontSize: 10, color: Colors.white54),
                   ),
                 ],
               );
@@ -620,7 +670,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildAchievementsSection() {
-    final unlockedAchievementList = achievements.where((a) => a.isUnlocked).toList();
+    final unlockedAchievementList = achievements
+        .where((a) => a.isUnlocked)
+        .toList();
     final recentUnlockedAchievements = unlockedAchievementList.take(3).toList();
 
     return Column(
@@ -641,18 +693,12 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                const Text(
-                  '🎯',
-                  style: TextStyle(fontSize: 32),
-                ),
+                const Text('🎯', style: TextStyle(fontSize: 32)),
                 const SizedBox(height: 8),
                 const Text(
                   'Keep completing quests to unlock achievements!',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white54,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.white54),
                 ),
               ],
             ),
@@ -692,10 +738,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                achievement.icon,
-                style: const TextStyle(fontSize: 32),
-              ),
+              Text(achievement.icon, style: const TextStyle(fontSize: 32)),
               const SizedBox(height: 8),
               Text(
                 achievement.title,
@@ -719,11 +762,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   shape: BoxShape.circle,
                   color: Color(0xFFFFB74D),
                 ),
-                child: const Icon(
-                  Icons.check,
-                  size: 12,
-                  color: Colors.white,
-                ),
+                child: const Icon(Icons.check, size: 12, color: Colors.white),
               ),
             ),
         ],
@@ -743,18 +782,12 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            color.withOpacity(0.2),
-            color.withOpacity(0.05),
-          ],
+          colors: [color.withOpacity(0.2), color.withOpacity(0.05)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.4),
-          width: 1,
-        ),
+        border: Border.all(color: color.withOpacity(0.4), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -792,57 +825,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-    String actionLabel,
-    IconData icon,
-    Color color,
-    VoidCallback onPressed,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            color.withOpacity(0.3),
-            color.withOpacity(0.1),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.5),
-          width: 1,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: color, size: 20),
-                const SizedBox(width: 12),
-                Text(
-                  actionLabel,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -4,7 +4,10 @@ import 'constants/colors.dart';
 import 'screens/intro_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/name_input_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/main_app.dart';
+import 'screens/hydration_dashboard_screen.dart';
+import 'screens/hydration_stats_screen.dart';
+import 'screens/hydration_achievements_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -32,7 +35,7 @@ class _MyAppState extends State<MyApp> {
   Future<void> _loadPlayerName() async {
     final prefs = await SharedPreferences.getInstance();
     final savedPlayerName = prefs.getString('player_name');
-    
+
     setState(() {
       if (savedPlayerName != null && savedPlayerName.isNotEmpty) {
         _playerName = savedPlayerName;
@@ -59,7 +62,7 @@ class _MyAppState extends State<MyApp> {
   Future<void> _onNameSubmitted(String name) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('player_name', name);
-    
+
     setState(() {
       _playerName = name;
     });
@@ -74,6 +77,14 @@ class _MyAppState extends State<MyApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.neonBlue),
       ),
       home: _isLoading ? const SizedBox() : _buildInitialScreen(),
+      routes: {
+        '/hydration/dashboard': (context) => HydrationDashboardScreen(
+          playerName: _playerName,
+        ),
+        '/hydration/stats': (context) => const HydrationStatsScreen(),
+        '/hydration/achievements': (context) =>
+            const HydrationAchievementsScreen(),
+      },
     );
   }
 
@@ -93,7 +104,7 @@ class _MyAppState extends State<MyApp> {
       return NameInputScreen(onNameSubmitted: _onNameSubmitted);
     }
 
-    // Show main home screen after name is entered
-    return HomeScreen(playerName: _playerName);
+    // Show main app with navigation after name is entered
+    return MainApp(playerName: _playerName);
   }
 }
