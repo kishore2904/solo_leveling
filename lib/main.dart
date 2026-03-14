@@ -8,10 +8,17 @@ import 'screens/hydration_dashboard_screen.dart';
 import 'screens/hydration_stats_screen.dart';
 import 'screens/hydration_achievements_screen.dart';
 import 'services/storage_service.dart';
+import 'services/notification_service.dart';
+import 'services/adaptive_reminder_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await StorageService.initialize();
+  
+  // Initialize notifications and reminders
+  await NotificationService().initialize();
+  await AdaptiveReminderService().initializeReminders();
+  
   runApp(const MyApp());
 }
 
