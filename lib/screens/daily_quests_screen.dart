@@ -4,6 +4,7 @@ import '../constants/colors.dart';
 import '../constants/strings.dart';
 import '../models/daily_quest.dart';
 import '../services/storage_service.dart';
+import '../services/level_progression_service.dart';
 
 class DailyQuestsScreen extends StatefulWidget {
   const DailyQuestsScreen({super.key});
@@ -16,6 +17,7 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
   late List<DailyQuest> quests;
   int completedQuestCount = 0;
   final storage = StorageService();
+  final levelService = LevelProgressionService();
 
   @override
   void initState() {
@@ -93,6 +95,9 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
   }
 
   Future<void> _toggleQuestCompletion(int index) async {
+    final wasCompleted = quests[index].isCompleted;
+    final xpReward = quests[index].xpReward;
+
     setState(() {
       quests[index].isCompleted = !quests[index].isCompleted;
       if (quests[index].isCompleted) {
@@ -101,6 +106,34 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
         quests[index].completedAt = null;
       }
     });
+
+    // Handle XP reward when quest is completed
+    if (quests[index].isCompleted && !wasCompleted) {
+      // Getting previous level for comparison
+      final previousTotalXp = storage.getTotalXpEarned();
+      final newTotalXp = previousTotalXp + xpReward;
+
+      // Save the new XP total
+      await storage.addTotalXpEarned(xpReward);
+
+      // Check for level up
+      final levelUpInfo = levelService.checkLevelUp(
+        previousTotalXp: previousTotalXp,
+        newTotalXp: newTotalXp,
+      );
+
+      // Show notifications
+      if (mounted) {
+        if (levelUpInfo['leveledUp'] as bool) {
+          _showLevelUpNotification(levelUpInfo['newLevel'] as int);
+        } else {
+          _showXpGainedNotification(xpReward);
+        }
+      }
+    } else if (!quests[index].isCompleted && wasCompleted) {
+      // Quest was uncompleted - subtract XP
+      await storage.addTotalXpEarned(-xpReward);
+    }
 
     _updateCompletedQuestCount();
     await _saveQuestStatus();
@@ -120,6 +153,68 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
     return quests.fold(
       0,
       (sum, quest) => quest.isCompleted ? sum + quest.xpReward : sum,
+    );
+  }
+
+  void _showLevelUpNotification(int newLevel) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Text('⭐ ', style: TextStyle(fontSize: 20)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Level Up!',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    'You reached Level $newLevel',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF9F7AEA),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  void _showXpGainedNotification(int xpAmount) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Text('✨ ', style: TextStyle(fontSize: 16)),
+            Expanded(
+              child: Text(
+                '+$xpAmount XP Gained!',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF00D9FF),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
   }
 

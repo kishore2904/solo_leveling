@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../services/storage_service.dart';
+import '../services/level_progression_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String playerName;
@@ -12,6 +13,8 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final levelService = LevelProgressionService();
+
   int level = 1;
   int dailyStreak = 0;
   int totalQuestsCompleted = 0;
@@ -24,14 +27,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfileData() async {
     final storage = StorageService();
-    final savedLevel = storage.getPlayerLevel();
+    final totalXpEarned = storage.getTotalXpEarned();
+    final levelInfo = levelService.calculateLevelFromTotalXp(totalXpEarned);
     final savedStreak = storage.getDailyStreak();
     // Note: total quests completed not yet available in StorageService
     // Using default value of 0 for now
     const savedQuestsCompleted = 0;
 
     setState(() {
-      level = savedLevel;
+      level = levelInfo['level']!;
       dailyStreak = savedStreak;
       totalQuestsCompleted = savedQuestsCompleted;
     });

@@ -38,6 +38,7 @@ class StorageService {
   static const String _keyHydrationXpToday = 'hydration_xp_today';
   static const String _keyHydrationTotalXp = 'hydration_total_xp';
   static const String _keyLastHydrationXpReset = 'last_hydration_xp_reset';
+  static const String _keyTotalXpEarned = 'total_xp_earned';
 
   // ============ PLAYER DATA ============
   /// Save player name
@@ -291,6 +292,32 @@ class StorageService {
   /// Get total XP earned from hydration (lifetime)
   int getHydrationTotalXp() {
     return _prefs.getInt(_keyHydrationTotalXp) ?? 0;
+  }
+
+  /// Save total XP earned by player (from all sources: quests, hydration, achievements)
+  Future<bool> saveTotalXpEarned(int totalXp) async {
+    return await _prefs.setInt(_keyTotalXpEarned, totalXp);
+  }
+
+  /// Get total XP earned by player (from all sources)
+  int getTotalXpEarned() {
+    return _prefs.getInt(_keyTotalXpEarned) ?? 0;
+  }
+
+  /// Add to total XP earned
+  Future<bool> addTotalXpEarned(int xpToAdd) async {
+    final current = getTotalXpEarned();
+    return await saveTotalXpEarned(current + xpToAdd);
+  }
+
+  /// Get player level (calculated from total XP)
+  int getPlayerLevelFromXp() {
+    return _prefs.getInt(_keyPlayerLevel) ?? 1;
+  }
+
+  /// Save player level
+  Future<bool> savePlayerLevelFromXp(int level) async {
+    return await _prefs.setInt(_keyPlayerLevel, level);
   }
 
   /// Add to total hydration XP (lifetime)

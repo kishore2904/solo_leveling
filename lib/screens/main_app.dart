@@ -17,12 +17,13 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> {
   int _selectedIndex = 0;
   late List<Widget> _screens;
+  final GlobalKey<HomeScreenState> _homeScreenKey = GlobalKey<HomeScreenState>();
 
   @override
   void initState() {
     super.initState();
     _screens = [
-      HomeScreen(playerName: widget.playerName),
+      HomeScreen(key: _homeScreenKey, playerName: widget.playerName),
       const DailyQuestsScreen(),
       HydrationDashboardScreen(playerName: widget.playerName),
       ProfileScreen(playerName: widget.playerName),
@@ -34,6 +35,11 @@ class _MainAppState extends State<MainApp> {
     setState(() {
       _selectedIndex = index;
     });
+    
+    // Refresh HomeScreen data when switching to it
+    if (index == 0) {
+      _homeScreenKey.currentState?.refreshPlayerLevel();
+    }
   }
 
   @override

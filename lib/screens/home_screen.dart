@@ -7,7 +7,8 @@ import '../models/hydration_goal.dart';
 import '../models/hydration_streak.dart';
 import '../models/hydration_log.dart';
 import '../services/storage_service.dart';
-import '../widgets/hydration_widgets.dart';
+import '../services/level_progression_service.dart';
+import '../widgets/index.dart';
 
 class HomeScreen extends StatefulWidget {
   final String playerName;
@@ -15,13 +16,15 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.playerName});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
+  final levelService = LevelProgressionService();
+
   int level = 1;
-  int experience = 450;
-  int maxExperience = 1000;
+  int currentXp = 0;
+  int requiredXpForNextLevel = 250;
   int hp = 100;
   int maxHp = 100;
   int intelligence = 80;
@@ -117,38 +120,49 @@ class _HomeScreenState extends State<HomeScreen> {
     final hydrationXpToday = storage.getHydrationXpToday();
     todayXp += hydrationXpToday;
 
-    // Load and apply total experience
-    await _loadTotalExperience();
+    // Load and apply total experience using new level progression system
+    await _loadPlayerLevel();
 
     setState(() {});
   }
 
-  Future<void> _loadTotalExperience() async {
+  Future<void> _loadPlayerLevel() async {
     final storage = StorageService();
-    experience = storage.getTotalExperience();
-    level = storage.getPlayerLevel();
-    maxExperience = storage.getMaxExperience();
+    final totalXpEarned = storage.getTotalXpEarned();
+    final levelInfo = levelService.calculateLevelFromTotalXp(totalXpEarned);
+
+    level = levelInfo['level']!;
+    currentXp = levelInfo['currentXp']!;
+    requiredXpForNextLevel = levelInfo['requiredXp']!;
   }
 
-  Future<void> _saveTotalExperience() async {
-    final storage = StorageService();
-    await storage.saveTotalExperience(experience);
-    await storage.savePlayerLevel(level);
-    await storage.saveMaxExperience(maxExperience);
+  // Public method to refresh player level data (called when returning from other screens)
+  Future<void> refreshPlayerLevel() async {
+    await _loadPlayerLevel();
+    setState(() {});
   }
 
-  Future<void> _addExperience(int xpToAdd) async {
-    experience += xpToAdd;
+  Future<void> _addQuestXp(int xpToAdd) async {
+    final storage = StorageService();
+    final previousTotalXp = storage.getTotalXpEarned();
+    final newTotalXp = previousTotalXp + xpToAdd;
 
-    // Check for level up
-    while (experience >= maxExperience) {
-      experience -= maxExperience;
-      level += 1;
-      maxExperience = (maxExperience * 1.1)
-          .toInt(); // Increase max XP by 10% per level
+    // Save new total XP
+    await storage.addTotalXpEarned(xpToAdd);
+
+    // Check if user leveled up
+    final levelUpInfo = levelService.checkLevelUp(
+      previousTotalXp: previousTotalXp,
+      newTotalXp: newTotalXp,
+    );
+
+    if (levelUpInfo['leveledUp'] as bool) {
+      _showLevelUpNotification(levelUpInfo['newLevel'] as int);
     }
 
-    await _saveTotalExperience();
+    // Reload player level
+    await _loadPlayerLevel();
+    setState(() {});
   }
 
   Future<void> _loadWeeklyStats() async {
@@ -260,6 +274,42 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {});
   }
 
+  void _showLevelUpNotification(int newLevel) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Text('⭐ ', style: TextStyle(fontSize: 20)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Level Up!',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    'You reached Level $newLevel',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF9F7AEA),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -340,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 20),
 
                 // Daily Streak Counter
-                _buildStreakCard(),
+                StreakCard(streakCount: dailyStreak),
                 const SizedBox(height: 20),
 
                 // Today's XP Summary
@@ -363,7 +413,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         Text(
-                          '$experience / $maxExperience',
+                          '$currentXp / $requiredXpForNextLevel',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Color(0xFF00D9FF),
@@ -375,7 +425,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: LinearProgressIndicator(
-                        value: experience / maxExperience,
+                        value: currentXp / requiredXpForNextLevel,
                         minHeight: 12,
                         backgroundColor: Colors.grey[900],
                         valueColor: const AlwaysStoppedAnimation<Color>(
@@ -405,34 +455,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 // Stats Grid
                 Column(
                   children: [
-                    _buildStatCard('HP', hp, maxHp, const Color(0xFFFF6B6B)),
+                    StatCard(label: 'HP', currentValue: hp, maxValue: maxHp, color: const Color(0xFFFF6B6B)),
                     const SizedBox(height: 12),
-                    _buildStatCard(
-                      'Intelligence',
-                      intelligence,
-                      maxIntelligence,
-                      const Color(0xFF4B7AFF),
+                    StatCard(
+                      label: 'Intelligence',
+                      currentValue: intelligence,
+                      maxValue: maxIntelligence,
+                      color: const Color(0xFF4B7AFF),
                     ),
                     const SizedBox(height: 12),
-                    _buildStatCard(
-                      'Strength',
-                      strength,
-                      100,
-                      const Color(0xFF9F7AEA),
+                    StatCard(
+                      label: 'Strength',
+                      currentValue: strength,
+                      maxValue: 100,
+                      color: const Color(0xFF9F7AEA),
                     ),
                     const SizedBox(height: 12),
-                    _buildStatCard(
-                      'Consistency',
-                      consistency,
-                      100,
-                      const Color(0xFFFFB74D),
+                    StatCard(
+                      label: 'Consistency',
+                      currentValue: consistency,
+                      maxValue: 100,
+                      color: const Color(0xFFFFB74D),
                     ),
                     const SizedBox(height: 12),
-                    _buildStatCard(
-                      'Resilience',
-                      resilience,
-                      100,
-                      const Color(0xFFFF8C42),
+                    StatCard(
+                      label: 'Resilience',
+                      currentValue: resilience,
+                      maxValue: 100,
+                      color: const Color(0xFFFF8C42),
                     ),
                   ],
                 ),
@@ -445,78 +495,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildStreakCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFFF6B6B).withOpacity(0.2),
-            const Color(0xFFFF8E71).withOpacity(0.1),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFFF6B6B).withOpacity(0.5),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Daily Streak',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white70,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Text('🔥', style: TextStyle(fontSize: 24)),
-                  const SizedBox(width: 8),
-                  Text(
-                    '$dailyStreak',
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFFF6B6B),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  const Text(
-                    'days',
-                    style: TextStyle(fontSize: 14, color: Colors.white70),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF6B6B).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'Keep it up!',
-              style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFFFF6B6B),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -713,121 +691,11 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
             children: recentUnlockedAchievements.map((achievement) {
-              return _buildAchievementCard(achievement);
+              return AchievementCard(achievement: achievement);
             }).toList(),
           ),
       ],
     );
   }
 
-  Widget _buildAchievementCard(Achievement achievement) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFFFB74D).withOpacity(0.2),
-            const Color(0xFFFF8A65).withOpacity(0.1),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFFFB74D).withOpacity(0.5),
-          width: 1,
-        ),
-      ),
-      child: Stack(
-        children: [
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(achievement.icon, style: const TextStyle(fontSize: 32)),
-              const SizedBox(height: 8),
-              Text(
-                achievement.title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-                maxLines: 2,
-              ),
-            ],
-          ),
-          if (achievement.isUnlocked)
-            Positioned(
-              top: 4,
-              right: 4,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0xFFFFB74D),
-                ),
-                child: const Icon(Icons.check, size: 12, color: Colors.white),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard(
-    String statLabel,
-    int currentStatValue,
-    int maximumStatValue,
-    Color color,
-  ) {
-    double statFillPercentage = currentStatValue / maximumStatValue;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color.withOpacity(0.2), color.withOpacity(0.05)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.4), width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            statLabel,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.white70,
-              letterSpacing: 0.5,
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$currentStatValue/$maximumStatValue',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: statFillPercentage,
-                  minHeight: 6,
-                  backgroundColor: Colors.grey[900],
-                  valueColor: AlwaysStoppedAnimation<Color>(color),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }

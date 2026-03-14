@@ -66,6 +66,9 @@ class DailyResetService {
     await storage.clearHydrationLogsToday();
     await storage.clearHydrationScoreToday();
     await storage.resetHydrationXpToday();
+    
+    // Clear yesterday's quests (so daily quests are fresh for new day)
+    await storage.clearQuestData(yesterday);
 
     // Update last reset date
     await storage.saveLastResetDate(_getDateString(DateTime.now()));

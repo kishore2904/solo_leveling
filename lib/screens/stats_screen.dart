@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../services/storage_service.dart';
+import '../services/level_progression_service.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -10,9 +11,11 @@ class StatsScreen extends StatefulWidget {
 }
 
 class _StatsScreenState extends State<StatsScreen> {
+  final levelService = LevelProgressionService();
+
   int level = 1;
-  int experience = 450;
-  int maxExperience = 1000;
+  int currentXp = 0;
+  int requiredXpForNextLevel = 250;
   int hp = 100;
   int maxHp = 100;
   int intelligence = 80;
@@ -29,10 +32,13 @@ class _StatsScreenState extends State<StatsScreen> {
 
   Future<void> _loadStats() async {
     final storage = StorageService();
+    final totalXpEarned = storage.getTotalXpEarned();
+    final levelInfo = levelService.calculateLevelFromTotalXp(totalXpEarned);
+
     setState(() {
-      level = storage.getPlayerLevel();
-      experience = storage.getTotalExperience();
-      maxExperience = storage.getMaxExperience();
+      level = levelInfo['level']!;
+      currentXp = levelInfo['currentXp']!;
+      requiredXpForNextLevel = levelInfo['requiredXp']!;
     });
   }
 
@@ -126,7 +132,7 @@ class _StatsScreenState extends State<StatsScreen> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: LinearProgressIndicator(
-                        value: experience / maxExperience,
+                        value: currentXp / requiredXpForNextLevel,
                         minHeight: 12,
                         backgroundColor: Colors.grey[900],
                         valueColor: const AlwaysStoppedAnimation<Color>(
@@ -136,7 +142,7 @@ class _StatsScreenState extends State<StatsScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '$experience / $maxExperience XP',
+                      '$currentXp / $requiredXpForNextLevel XP',
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF00D9FF),
