@@ -24,6 +24,10 @@ class AdaptiveReminderService {
       HydrationCalculationService();
   final storage = StorageService();
 
+  // Testing mode: set to true to get notifications every 5 minutes
+  static const bool _testingMode = false;
+  static const int _testReminderIntervalMinutes = 5;
+
   static const int _baseReminderIntervalMinutes = 60;
   static const int _minReminderIntervalMinutes = 30;
   static const int _maxReminderIntervalMinutes = 240;
@@ -67,6 +71,10 @@ class AdaptiveReminderService {
       totalConsumedMl += log.amountMl.toInt();
     }
 
+    // Log the reminder trigger time
+    final now = DateTime.now();
+    print('📢 [NOTIFICATION TRIGGERED] ${now.toString()} - Reminder sent');
+
     // Determine reminder type based on time and consumption
     await _determineAndSendReminder(
       goal: goal,
@@ -79,6 +87,9 @@ class AdaptiveReminderService {
       type: 'reminder',
       status: 'sent',
     );
+
+    // Save timing log
+    await _logNotificationTiming(now);
 
     // Schedule next reminder
     await startSmartReminders();
@@ -118,7 +129,7 @@ class AdaptiveReminderService {
         body:
             'You haven\'t consumed much water yet. Let\'s get started! Drink a glass now.',
         notificationId: _generateNotificationId(),
-        payload: 'urgent_reminder',
+        payload: 'hydration_reminder',
       );
     } else if (hydrationLevel < 50) {
       // Below halfway - encouraging reminder
@@ -127,7 +138,7 @@ class AdaptiveReminderService {
         body:
             'You\'re $hydrationLevel% of the way. Have another glass of water!',
         notificationId: _generateNotificationId(),
-        payload: 'progress_reminder',
+        payload: 'hydration_reminder',
       );
     } else if (hydrationLevel < 80) {
       // Getting close - motivational reminder
@@ -136,7 +147,7 @@ class AdaptiveReminderService {
         body:
             'You\'re $hydrationLevel% done. Just a few more glasses to reach your goal!',
         notificationId: _generateNotificationId(),
-        payload: 'motivational_reminder',
+        payload: 'hydration_reminder',
       );
     } else {
       // Very close - final push
@@ -144,13 +155,18 @@ class AdaptiveReminderService {
         title: '💧 Final Push!',
         body: 'You\'re so close! Just ${goal.dailyGoalMl - currentConsumption}ml more!',
         notificationId: _generateNotificationId(),
-        payload: 'final_reminder',
+        payload: 'hydration_reminder',
       );
     }
   }
 
   /// Calculate adaptive reminder interval
   Future<Duration> _calculateNextReminderTime() async {
+    // For testing: return 5 minute interval
+    if (_testingMode) {
+      return const Duration(minutes: _testReminderIntervalMinutes);
+    }
+
     final goalJson = storage.getHydrationGoal();
 
     if (goalJson == null) {
@@ -295,6 +311,48 @@ class AdaptiveReminderService {
 
     recentNotifications.add(jsonEncode(event.toJson()));
     await storage.saveRecentNotifications(recentNotifications);
+  }
+
+  /// Log notification timing for debugging and tracking
+  Future<void> _logNotificationTiming(DateTime triggeredAt) async {
+    final List<String> timingLogs = storage.getNotificationTimingLogs();
+
+    // Format: "HH:mm:ss - Notification triggered"
+    final formattedTime = triggeredAt.toString().split('.')[0]; // Remove milliseconds
+    final logEntry = '$formattedTime - Notification triggered';
+
+    timingLogs.add(logEntry);
+
+    // Keep only last 50 logs to avoid storage bloat
+    if (timingLogs.length > 50) {
+      timingLogs.removeAt(0);
+    }
+
+    await storage.saveNotificationTimingLogs(timingLogs);
+
+    print('⏰ [TIMING LOG] $logEntry');
+  }
+
+  /// Get all notification timing logs
+  List<String> getNotificationTimingLogs() {
+    return storage.getNotificationTimingLogs();
+  }
+
+  /// Clear notification timing logs
+  Future<void> clearNotificationTimingLogs() async {
+    await storage.clearNotificationTimingLogs();
+    print('✅ [TIMING LOG CLEARED] All notification timing logs cleared');
+  }
+
+  /// Print all notification timing logs to console
+  void printNotificationTimingLogs() {
+    final logs = storage.getNotificationTimingLogs();
+    print('\n📋 [NOTIFICATION TIMING LOGS] Total: ${logs.length}');
+    print('═' * 50);
+    for (int i = 0; i < logs.length; i++) {
+      print('${i + 1}. ${logs[i]}');
+    }
+    print('═' * 50 + '\n');
   }
 
   /// Dispose reminder service

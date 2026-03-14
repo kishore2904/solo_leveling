@@ -39,6 +39,7 @@ class StorageService {
   static const String _keyHydrationTotalXp = 'hydration_total_xp';
   static const String _keyLastHydrationXpReset = 'last_hydration_xp_reset';
   static const String _keyTotalXpEarned = 'total_xp_earned';
+  static const String _keyNotificationTimingLogs = 'notification_timing_logs';
 
   // ============ PLAYER DATA ============
   /// Save player name
@@ -417,5 +418,21 @@ class StorageService {
       'achievementData': getAchievements() != null,
       'hydrationGoal': getHydrationGoal() != null,
     };
+  }
+
+  // ============ NOTIFICATION TIMING LOGS ============
+  /// Save notification timing logs
+  Future<bool> saveNotificationTimingLogs(List<String> logs) async {
+    return await _prefs.setStringList(_keyNotificationTimingLogs, logs);
+  }
+
+  /// Get notification timing logs
+  List<String> getNotificationTimingLogs() {
+    return _prefs.getStringList(_keyNotificationTimingLogs) ?? [];
+  }
+
+  /// Clear notification timing logs
+  Future<bool> clearNotificationTimingLogs() async {
+    return await _prefs.remove(_keyNotificationTimingLogs);
   }
 }

@@ -14,6 +14,9 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  // Callback for handling notification taps with navigation
+  Function(String? payload)? _notificationTapCallback;
+
   Future<void> initialize() async {
     const AndroidInitializationSettings androidInitializationSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -53,9 +56,19 @@ class NotificationService {
         );
   }
 
+  /// Set callback for handling notification taps
+  void setNotificationTapCallback(Function(String? payload)? callback) {
+    _notificationTapCallback = callback;
+  }
+
   void _onNotificationTapped(NotificationResponse notificationResponse) {
-    // Handle notification tap
+    // Handle notification tap with callback
     print('Notification tapped: ${notificationResponse.payload}');
+    
+    // Call the callback if set
+    if (_notificationTapCallback != null) {
+      _notificationTapCallback!(notificationResponse.payload);
+    }
   }
 
   /// Send hydration reminder notification

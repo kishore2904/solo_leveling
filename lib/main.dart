@@ -11,12 +11,25 @@ import 'services/storage_service.dart';
 import 'services/notification_service.dart';
 import 'services/adaptive_reminder_service.dart';
 
+// Global navigator key for handling notifications
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await StorageService.initialize();
   
   // Initialize notifications and reminders
-  await NotificationService().initialize();
+  final notificationService = NotificationService();
+  await notificationService.initialize();
+  
+  // Set callback for when notification is tapped
+  notificationService.setNotificationTapCallback((payload) {
+    if (payload == 'hydration_reminder') {
+      // Navigate to hydration dashboard
+      navigatorKey.currentState?.pushNamed('/hydration/dashboard');
+    }
+  });
+  
   await AdaptiveReminderService().initializeReminders();
   
   runApp(const MyApp());
@@ -83,6 +96,7 @@ class _MyAppState extends State<MyApp> {
         scaffoldBackgroundColor: AppColors.darkBg,
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.neonBlue),
       ),
+      navigatorKey: navigatorKey,
       home: _isLoading ? const SizedBox() : _buildInitialScreen(),
       routes: {
         '/hydration/dashboard': (context) => HydrationDashboardScreen(
