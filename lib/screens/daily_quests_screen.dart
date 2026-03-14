@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../constants/colors.dart';
+import '../constants/strings.dart';
 import '../models/daily_quest.dart';
+import '../services/storage_service.dart';
 
 class DailyQuestsScreen extends StatefulWidget {
   const DailyQuestsScreen({super.key});
@@ -14,6 +15,7 @@ class DailyQuestsScreen extends StatefulWidget {
 class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
   late List<DailyQuest> quests;
   int completedQuestCount = 0;
+  final storage = StorageService();
 
   @override
   void initState() {
@@ -25,47 +27,47 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
     quests = [
       DailyQuest(
         id: '1',
-        title: 'Wake Up at 6 AM',
-        description: 'Start your day early and energized',
-        category: 'Health',
+        title: AppStrings.wakeUpEarly,
+        description: AppStrings.wakeUpEarlyDesc,
+        category: AppStrings.categoryHealth,
         icon: '🌅',
         color: '#FF6B6B',
         xpReward: 50,
-        difficulty: 'Easy',
-        timeWindow: '6:00 AM - 10:00 AM',
+        difficulty: AppStrings.difficultyEasy,
+        timeWindow: AppStrings.timeWindow6to10am,
       ),
       DailyQuest(
         id: '2',
-        title: 'Complete Workout',
-        description: 'Do 30-45 minutes of exercise',
-        category: 'Health',
+        title: AppStrings.completeWorkout,
+        description: AppStrings.completeWorkoutDesc,
+        category: AppStrings.categoryHealth,
         icon: '💪',
         color: '#9F7AEA',
         xpReward: 100,
-        difficulty: 'Hard',
-        timeWindow: '6:30 AM - 9:00 AM',
+        difficulty: AppStrings.difficultyHard,
+        timeWindow: AppStrings.timeWindow630to9am,
       ),
       DailyQuest(
         id: '3',
-        title: 'Study for Interview',
-        description: 'Prepare for upcoming interviews',
-        category: 'Learning',
+        title: AppStrings.studyInterview,
+        description: AppStrings.studyInterviewDesc,
+        category: AppStrings.categoryLearning,
         icon: '📚',
         color: '#00D9FF',
         xpReward: 75,
-        difficulty: 'Medium',
-        timeWindow: '2:00 PM - 5:00 PM',
+        difficulty: AppStrings.difficultyMedium,
+        timeWindow: AppStrings.timeWindow2to5pm,
       ),
       DailyQuest(
         id: '4',
-        title: 'Read Book',
-        description: 'Read for 30 minutes',
-        category: 'Learning',
+        title: AppStrings.readBook,
+        description: AppStrings.readBookDesc,
+        category: AppStrings.categoryLearning,
         icon: '📖',
         color: '#FFB74D',
         xpReward: 50,
-        difficulty: 'Easy',
-        timeWindow: '8:00 PM - 10:00 PM',
+        difficulty: AppStrings.difficultyEasy,
+        timeWindow: AppStrings.timeWindow8to10pm,
       ),
     ];
 
@@ -73,11 +75,8 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
   }
 
   Future<void> _loadQuestStatus() async {
-    final prefs = await SharedPreferences.getInstance();
     final today = DateTime.now();
-    final dateKey = 'quests_${today.year}_${today.month}_${today.day}';
-
-    final savedQuestsJsonData = prefs.getString(dateKey);
+    final savedQuestsJsonData = storage.getQuestData(today);
     if (savedQuestsJsonData != null) {
       final decodedQuestList = jsonDecode(savedQuestsJsonData) as List;
       for (var i = 0; i < quests.length; i++) {
@@ -112,12 +111,9 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
   }
 
   Future<void> _saveQuestStatus() async {
-    final prefs = await SharedPreferences.getInstance();
     final today = DateTime.now();
-    final dateKey = 'quests_${today.year}_${today.month}_${today.day}';
-
     final questsJson = quests.map((q) => q.toJson()).toList();
-    await prefs.setString(dateKey, jsonEncode(questsJson));
+    await storage.saveQuestData(today, jsonEncode(questsJson));
   }
 
   int _calculateTotalEarnedXp() {
@@ -135,7 +131,7 @@ class _DailyQuestsScreenState extends State<DailyQuestsScreen> {
         backgroundColor: AppColors.darkBg,
         elevation: 0,
         title: const Text(
-          'Daily Quests',
+          AppStrings.dailyQuests,
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,

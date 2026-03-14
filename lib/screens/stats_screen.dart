@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
+import '../services/storage_service.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -28,11 +28,11 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<void> _loadStats() async {
-    final prefs = await SharedPreferences.getInstance();
+    final storage = StorageService();
     setState(() {
-      level = prefs.getInt('player_level') ?? 1;
-      experience = prefs.getInt('total_experience') ?? 450;
-      maxExperience = prefs.getInt('max_experience') ?? 1000;
+      level = storage.getPlayerLevel();
+      experience = storage.getTotalExperience();
+      maxExperience = storage.getMaxExperience();
     });
   }
 

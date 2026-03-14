@@ -1,7 +1,7 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:solo_leveling/models/achievement.dart';
 import 'notification_service.dart';
+import 'storage_service.dart';
 
 class AchievementUnlockService {
   static final AchievementUnlockService _instance =
@@ -14,16 +14,16 @@ class AchievementUnlockService {
   AchievementUnlockService._internal();
 
   final NotificationService _notificationService = NotificationService();
+  final storage = StorageService();
 
   /// Initialize achievements for a new user
   Future<void> initializeAchievements() async {
-    final prefs = await SharedPreferences.getInstance();
-    final achievementsJson = prefs.getString('achievements');
+    final achievementsJson = storage.getAchievements();
 
     if (achievementsJson == null) {
       // Create all achievements in locked state
       final achievements = _createDefaultAchievements();
-      await prefs.setString('achievements', jsonEncode(achievements));
+      await storage.saveAchievements(jsonEncode(achievements));
     }
   }
 
@@ -36,8 +36,7 @@ class AchievementUnlockService {
     required int totalWaterIntakeMl,
     required List<DateTime> loggingDates,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final achievementsJson = prefs.getString('achievements');
+    final achievementsJson = storage.getAchievements();
     final unlockedNow = <String>[];
 
     if (achievementsJson == null) {
@@ -82,8 +81,7 @@ class AchievementUnlockService {
     }
 
     if (saveNeeded) {
-      await prefs.setString(
-        'achievements',
+      await storage.saveAchievements(
         jsonEncode(achievements.map((a) => a.toJson()).toList()),
       );
     }
@@ -157,8 +155,7 @@ class AchievementUnlockService {
 
   /// Get all achievements with unlock status
   Future<List<Achievement>> getAllAchievements() async {
-    final prefs = await SharedPreferences.getInstance();
-    final achievementsJson = prefs.getString('achievements');
+    final achievementsJson = storage.getAchievements();
 
     if (achievementsJson == null) {
       await initializeAchievements();
@@ -190,9 +187,8 @@ class AchievementUnlockService {
 
   /// Reset all achievements (for testing)
   Future<void> resetAllAchievements() async {
-    final prefs = await SharedPreferences.getInstance();
     final achievements = _createDefaultAchievements();
-    await prefs.setString('achievements', jsonEncode(achievements));
+    await storage.saveAchievements(jsonEncode(achievements));
   }
 
   /// Create default achievements

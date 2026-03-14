@@ -1,4 +1,3 @@
-import 'package:solo_leveling/models/hydration_goal.dart';
 
 class HydrationCalculationService {
   static final HydrationCalculationService _instance =

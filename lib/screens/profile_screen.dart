@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
+import '../services/storage_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String playerName;
@@ -23,10 +23,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfileData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedLevel = prefs.getInt('player_level') ?? 1;
-    final savedStreak = prefs.getInt('daily_streak') ?? 0;
-    final savedQuestsCompleted = prefs.getInt('total_quests_completed') ?? 0;
+    final storage = StorageService();
+    final savedLevel = storage.getPlayerLevel();
+    final savedStreak = storage.getDailyStreak();
+    // Note: total quests completed not yet available in StorageService
+    // Using default value of 0 for now
+    const savedQuestsCompleted = 0;
 
     setState(() {
       level = savedLevel;

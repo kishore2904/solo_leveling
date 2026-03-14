@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'constants/colors.dart';
 import 'screens/intro_screen.dart';
 import 'screens/splash_screen.dart';
@@ -8,8 +7,11 @@ import 'screens/main_app.dart';
 import 'screens/hydration_dashboard_screen.dart';
 import 'screens/hydration_stats_screen.dart';
 import 'screens/hydration_achievements_screen.dart';
+import 'services/storage_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await StorageService.initialize();
   runApp(const MyApp());
 }
 
@@ -33,8 +35,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _loadPlayerName() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedPlayerName = prefs.getString('player_name');
+    final savedPlayerName = StorageService().getPlayerName();
 
     setState(() {
       if (savedPlayerName != null && savedPlayerName.isNotEmpty) {
@@ -60,8 +61,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _onNameSubmitted(String name) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('player_name', name);
+    await StorageService().savePlayerName(name);
 
     setState(() {
       _playerName = name;

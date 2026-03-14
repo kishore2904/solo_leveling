@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../constants/strings.dart';
 
 class HydrationAchievementsScreen extends StatefulWidget {
   const HydrationAchievementsScreen({super.key});
@@ -11,98 +12,7 @@ class HydrationAchievementsScreen extends StatefulWidget {
 class _HydrationAchievementsScreenState
     extends State<HydrationAchievementsScreen> {
   // Hard-coded achievements for demo
-  final List<Map<String, dynamic>> achievements = [
-    {
-      'title': 'First Drop',
-      'icon': '💧',
-      'description': 'Log your first glass of water',
-      'xpReward': 10,
-      'unlocked': true,
-      'category': 'Beginner',
-      'progress': 100,
-    },
-    {
-      'title': 'Morning Hydrator',
-      'icon': '🌅',
-      'description': 'Log water before 9:00 AM for 3 consecutive days',
-      'xpReward': 25,
-      'unlocked': true,
-      'category': 'Habit',
-      'progress': 100,
-    },
-    {
-      'title': 'Hydration Starter',
-      'icon': '✨',
-      'description': 'Complete your daily goal for the first time',
-      'xpReward': 50,
-      'unlocked': true,
-      'category': 'Milestone',
-      'progress': 100,
-    },
-    {
-      'title': 'Weekly Water Warrior',
-      'icon': '⚔️',
-      'description': 'Meet daily goal for 7 consecutive days',
-      'xpReward': 100,
-      'unlocked': true,
-      'category': 'Challenge',
-      'progress': 100,
-    },
-    {
-      'title': 'Hydration Hero',
-      'icon': '🦸',
-      'description': 'Maintain a 30-day hydration streak',
-      'xpReward': 250,
-      'unlocked': false,
-      'category': 'Challenge',
-      'progress': 20,
-    },
-    {
-      'title': 'Water Master',
-      'icon': '👑',
-      'description': 'Complete 100 days of hydration goals',
-      'xpReward': 500,
-      'unlocked': false,
-      'category': 'Legendary',
-      'progress': 15,
-    },
-    {
-      'title': 'Consistency King',
-      'icon': '👑',
-      'description': 'Never miss a day for 2 months',
-      'xpReward': 300,
-      'unlocked': false,
-      'category': 'Legendary',
-      'progress': 40,
-    },
-    {
-      'title': 'Night Owl Hydrator',
-      'icon': '🌙',
-      'description': 'Log water after 8:00 PM for 10 days',
-      'xpReward': 50,
-      'unlocked': false,
-      'category': 'Habit',
-      'progress': 60,
-    },
-    {
-      'title': 'Never Ignore',
-      'icon': '📲',
-      'description': 'Respond to 95%+ of notifications in a week',
-      'xpReward': 75,
-      'unlocked': false,
-      'category': 'Engagement',
-      'progress': 50,
-    },
-    {
-      'title': 'Smart Pacer',
-      'icon': '⏱️',
-      'description': 'Maintain perfect reminder response for 7 days',
-      'xpReward': 100,
-      'unlocked': false,
-      'category': 'Engagement',
-      'progress': 35,
-    },
-  ];
+  late final List<Map<String, dynamic>> achievements;
 
   late List<Map<String, dynamic>> unlockedAchievements;
   late List<Map<String, dynamic>> lockedAchievements;
@@ -110,7 +20,103 @@ class _HydrationAchievementsScreenState
   @override
   void initState() {
     super.initState();
+    achievements = _generateAchievements();
     _categorizeAchievements();
+  }
+
+  List<Map<String, dynamic>> _generateAchievements() {
+    return [
+      {
+        'title': AppStrings.firstDrop,
+        'icon': '💧',
+        'description': AppStrings.firstDropDesc,
+        'xpReward': 10,
+        'unlocked': true,
+        'category': AppStrings.achievementBeginner,
+        'progress': 100,
+      },
+      {
+        'title': AppStrings.morningHydrator,
+        'icon': '🌅',
+        'description': AppStrings.morningHydratorDesc,
+        'xpReward': 25,
+        'unlocked': true,
+        'category': AppStrings.achievementHabit,
+        'progress': 100,
+      },
+      {
+        'title': AppStrings.hydrationStarter,
+        'icon': '✨',
+        'description': AppStrings.hydrationStarterDesc,
+        'xpReward': 50,
+        'unlocked': true,
+        'category': AppStrings.achievementMilestone,
+        'progress': 100,
+      },
+      {
+        'title': AppStrings.weeklyWarrior,
+        'icon': '⚔️',
+        'description': AppStrings.weeklyWarriorDesc,
+        'xpReward': 100,
+        'unlocked': true,
+        'category': AppStrings.achievementChallenge,
+        'progress': 100,
+      },
+      {
+        'title': AppStrings.hydrationHero,
+        'icon': '🦸',
+        'description': AppStrings.hydrationHeroDesc,
+        'xpReward': 250,
+        'unlocked': false,
+        'category': AppStrings.achievementChallenge,
+        'progress': 20,
+      },
+      {
+        'title': AppStrings.waterMaster,
+        'icon': '👑',
+        'description': AppStrings.waterMasterDesc,
+        'xpReward': 500,
+        'unlocked': false,
+        'category': AppStrings.achievementLegendary,
+        'progress': 15,
+      },
+      {
+        'title': AppStrings.consistencyKing,
+        'icon': '👑',
+        'description': AppStrings.consistencyKingDesc,
+        'xpReward': 300,
+        'unlocked': false,
+        'category': AppStrings.achievementLegendary,
+        'progress': 40,
+      },
+      {
+        'title': AppStrings.nightOwl,
+        'icon': '🌙',
+        'description': AppStrings.nightOwlDesc,
+        'xpReward': 50,
+        'unlocked': false,
+        'category': AppStrings.achievementHabit,
+        'progress': 60,
+      },
+      {
+        'title': AppStrings.neverIgnore,
+        'icon': '📲',
+        'description': AppStrings.neverIgnoreDesc,
+        'xpReward': 75,
+        'unlocked': false,
+        'category': AppStrings.achievementEngagement,
+        'progress': 50,
+      },
+      {
+        'title': AppStrings.smartPacer,
+        'icon': '⏱️',
+        'description': AppStrings.smartPacerDesc,
+        'xpReward': 100,
+        'unlocked': false,
+        'category': AppStrings.achievementEngagement,
+        'progress': 35,
+      },
+    ];
   }
 
   void _categorizeAchievements() {
@@ -128,7 +134,7 @@ class _HydrationAchievementsScreenState
         backgroundColor: const Color(0xFF0A0E27),
         elevation: 0,
         title: const Text(
-          '🏆 Achievements',
+          AppStrings.hydrationAchievements,
           style: TextStyle(
             color: Color(0xFF00D9FF),
             fontSize: 24,

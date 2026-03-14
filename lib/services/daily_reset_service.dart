@@ -1,13 +1,14 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:solo_leveling/models/hydration_streak.dart';
 import 'package:solo_leveling/models/hydration_score.dart';
+import 'storage_service.dart';
 import 'achievement_unlock_service.dart';
 import 'hydration_calculation_service.dart';
 
 class DailyResetService {
   static final DailyResetService _instance = DailyResetService._internal();
+  final storage = StorageService();
 
   factory DailyResetService() {
     return _instance;
@@ -28,13 +29,12 @@ class DailyResetService {
 
   /// Check if it's a new day and reset if needed
   Future<bool> checkAndReset() async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastResetDateStr = prefs.getString('last_reset_date');
+    final lastResetDateStr = storage.getLastResetDate();
     final today = _getDateString(DateTime.now());
 
     if (lastResetDateStr != today) {
       // It's a new day
-      await _performDailyReset(prefs);
+      await _performDailyReset();
       return true;
     }
 
@@ -42,46 +42,44 @@ class DailyResetService {
   }
 
   /// Perform the daily reset
-  Future<void> _performDailyReset(SharedPreferences prefs) async {
+  Future<void> _performDailyReset() async {
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
     final yesterdayStr = _getDateString(yesterday);
 
     // Save yesterday's logs to history
-    final logsJson = prefs.getStringList('hydration_logs_today') ?? [];
+    final logsJson = storage.getHydrationLogsToday();
     if (logsJson.isNotEmpty) {
       final historyKey = 'hydration_logs_$yesterdayStr';
-      await prefs.setStringList(historyKey, logsJson);
+      await storage.saveHydrationLogsForDate(yesterday, logsJson);
     }
 
     // Update streak
-    await _updateStreakForNewDay(prefs);
+    await _updateStreakForNewDay();
 
     // Archive yesterday's score
-    final yesterdayScore = prefs.getString('hydration_score_today');
+    final yesterdayScore = storage.getHydrationScoreToday();
     if (yesterdayScore != null) {
-      await prefs.setString(
-        'hydration_score_$yesterdayStr',
-        yesterdayScore,
-      );
+      await storage.saveLastHydrationScore(yesterdayScore);
     }
 
     // Reset daily data
-    await prefs.remove('hydration_logs_today');
-    await prefs.remove('hydration_score_today');
+    await storage.clearHydrationLogsToday();
+    await storage.clearHydrationScoreToday();
+    await storage.resetHydrationXpToday();
 
     // Update last reset date
-    await prefs.setString('last_reset_date', _getDateString(DateTime.now()));
+    await storage.saveLastResetDate(_getDateString(DateTime.now()));
   }
 
   /// Update streak for a new day
-  Future<void> _updateStreakForNewDay(SharedPreferences prefs) async {
-    final streakJson = prefs.getString('hydration_streak');
+  Future<void> _updateStreakForNewDay() async {
+    final streakJson = storage.getHydrationStreak();
     if (streakJson == null) return;
 
     final streak = HydrationStreak.fromJson(jsonDecode(streakJson));
 
     // Check if goal was met yesterday
-    final yesterdayScore = prefs.getString('hydration_score_today');
+    final yesterdayScore = storage.getHydrationScoreToday();
     bool goalMetYesterday = false;
 
     if (yesterdayScore != null) {
@@ -111,7 +109,7 @@ class DailyResetService {
       streak.streakDates.removeAt(0);
     }
 
-    await prefs.setString('hydration_streak', jsonEncode(streak.toJson()));
+    await storage.saveHydrationStreak(jsonEncode(streak.toJson()));
   }
 
   /// Schedule next daily reset at midnight
@@ -131,18 +129,17 @@ class DailyResetService {
 
   /// Get daily logs for a specific date
   Future<List<Map<String, dynamic>>> getDailyLogs(DateTime date) async {
-    final prefs = await SharedPreferences.getInstance();
     final dateStr = _getDateString(date);
     final dateNow = _getDateString(DateTime.now());
 
-    List<String>? logsJson;
+    List<String> logsJson;
     if (dateStr == dateNow) {
-      logsJson = prefs.getStringList('hydration_logs_today');
+      logsJson = storage.getHydrationLogsToday();
     } else {
-      logsJson = prefs.getStringList('hydration_logs_$dateStr');
+      logsJson = storage.getHydrationLogsForDate(date);
     }
 
-    if (logsJson == null) return [];
+    if (logsJson.isEmpty) return [];
 
     return logsJson.map((logJson) {
       final log = jsonDecode(logJson);
@@ -189,21 +186,19 @@ class DailyResetService {
 
   /// Get daily statistics
   Future<Map<String, dynamic>> getDailyStatistics(DateTime date) async {
-    final prefs = await SharedPreferences.getInstance();
     final dateStr = _getDateString(date);
     final dateNow = _getDateString(DateTime.now());
 
-    String scoreKey;
+    String? scoreJson;
     if (dateStr == dateNow) {
-      scoreKey = 'hydration_score_today';
+      scoreJson = storage.getHydrationScoreToday();
     } else {
-      scoreKey = 'hydration_score_$dateStr';
+      scoreJson = storage.getLastHydrationScore();
     }
 
-    final scoreJson = prefs.getString(scoreKey);
     final consumed = await getTotalConsumedForDate(date);
 
-    final goalJson = prefs.getString('hydration_goal');
+    final goalJson = storage.getHydrationGoal();
     int dailyGoal = 2000; // Default goal
     if (goalJson != null) {
       final goal = jsonDecode(goalJson);
@@ -234,40 +229,20 @@ class DailyResetService {
 
   /// Archive historical data periodically
   Future<void> archiveOldData() async {
-    final prefs = await SharedPreferences.getInstance();
     final thirtyDaysAgo =
         DateTime.now().subtract(const Duration(days: 30));
-    final thirtyDaysAgoStr = _getDateString(thirtyDaysAgo);
 
-    // Get all keys
-    final keys = prefs.getKeys();
-
-    for (var key in keys) {
-      if (key.startsWith('hydration_logs_') || key.startsWith('hydration_score_')) {
-        // Extract date from key
-        final dateStr = key.replaceFirst('hydration_logs_', '').replaceFirst('hydration_score_', '');
-        try {
-          if (dateStr.compareTo(thirtyDaysAgoStr) < 0) {
-            // This is older than 30 days - move to archive
-            // For now, we just delete it (could archive to external storage)
-            await prefs.remove(key);
-          }
-        } catch (e) {
-          // Skip invalid keys
-          continue;
-        }
-      }
-    }
+    // Use storage service to remove old historical logs
+    await storage.removeOldHistoryLogs(30);
   }
 
   /// Clear all hydration data (for testing/reset)
   Future<void> clearAllData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys();
+    final keys = storage.getAllKeys();
 
     for (var key in keys) {
       if (key.startsWith('hydration_') || key.startsWith('reminder_')) {
-        await prefs.remove(key);
+        await storage.removeKey(key);
       }
     }
   }
@@ -283,8 +258,7 @@ class DailyResetService {
 
   /// Get days since app started
   Future<int> getDaysSinceStart() async {
-    final prefs = await SharedPreferences.getInstance();
-    final startDateStr = prefs.getString('app_start_date');
+    final startDateStr = storage.getAppStartDate();
 
     if (startDateStr == null) {
       return 0;
@@ -300,11 +274,10 @@ class DailyResetService {
 
   /// Record app start date (if first time)
   Future<void> recordAppStartDate() async {
-    final prefs = await SharedPreferences.getInstance();
-    final startDateStr = prefs.getString('app_start_date');
+    final startDateStr = storage.getAppStartDate();
 
     if (startDateStr == null) {
-      await prefs.setString('app_start_date', DateTime.now().toIso8601String());
+      await storage.saveAppStartDate(DateTime.now().toIso8601String());
     }
   }
 }

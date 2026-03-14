@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:solo_leveling/models/hydration_goal.dart';
 import 'package:solo_leveling/models/hydration_log.dart';
 import 'package:solo_leveling/models/notification_event.dart';
 import 'notification_service.dart';
+import 'storage_service.dart';
 import 'hydration_calculation_service.dart';
 
 class AdaptiveReminderService {
@@ -22,6 +22,7 @@ class AdaptiveReminderService {
   final NotificationService _notificationService = NotificationService();
   final HydrationCalculationService _calculationService =
       HydrationCalculationService();
+  final storage = StorageService();
 
   static const int _baseReminderIntervalMinutes = 60;
   static const int _minReminderIntervalMinutes = 30;
@@ -29,8 +30,7 @@ class AdaptiveReminderService {
 
   /// Initialize reminder system
   Future<void> initializeReminders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isReminderPaused = prefs.getBool('reminder_paused') ?? false;
+    final isReminderPaused = storage.getIsReminderPaused();
 
     if (!isReminderPaused) {
       await startSmartReminders();
@@ -50,11 +50,9 @@ class AdaptiveReminderService {
 
   /// Send adaptive reminder based on user behavior
   Future<void> _sendAdaptiveReminder() async {
-    final prefs = await SharedPreferences.getInstance();
-
     // Load current hydration data
-    final goalJson = prefs.getString('hydration_goal');
-    final logsJson = prefs.getStringList('hydration_logs_today') ?? [];
+    final goalJson = storage.getHydrationGoal();
+    final logsJson = storage.getHydrationLogsToday();
 
     if (goalJson == null) {
       // No goal set, don't send reminder
@@ -127,7 +125,7 @@ class AdaptiveReminderService {
       await _notificationService.sendHydrationReminder(
         title: '💧 Keep the Momentum!',
         body:
-            'You\'re ${hydrationLevel}% of the way. Have another glass of water!',
+            'You\'re $hydrationLevel% of the way. Have another glass of water!',
         notificationId: _generateNotificationId(),
         payload: 'progress_reminder',
       );
@@ -136,7 +134,7 @@ class AdaptiveReminderService {
       await _notificationService.sendHydrationReminder(
         title: '💧 Almost There!',
         body:
-            'You\'re ${hydrationLevel}% done. Just a few more glasses to reach your goal!',
+            'You\'re $hydrationLevel% done. Just a few more glasses to reach your goal!',
         notificationId: _generateNotificationId(),
         payload: 'motivational_reminder',
       );
@@ -153,8 +151,7 @@ class AdaptiveReminderService {
 
   /// Calculate adaptive reminder interval
   Future<Duration> _calculateNextReminderTime() async {
-    final prefs = await SharedPreferences.getInstance();
-    final goalJson = prefs.getString('hydration_goal');
+    final goalJson = storage.getHydrationGoal();
 
     if (goalJson == null) {
       // Default to 1 hour if no goal
@@ -162,7 +159,7 @@ class AdaptiveReminderService {
     }
 
     final goal = HydrationGoal.fromJson(jsonDecode(goalJson));
-    final logsJson = prefs.getStringList('hydration_logs_today') ?? [];
+    final logsJson = storage.getHydrationLogsToday();
 
     int totalConsumedMl = 0;
     for (var logJson in logsJson) {
@@ -220,9 +217,7 @@ class AdaptiveReminderService {
 
   /// Check for notification fatigue
   Future<bool> shouldSuppressReminder() async {
-    final prefs = await SharedPreferences.getInstance();
-    final recentNotifications =
-        prefs.getStringList('recent_notifications') ?? [];
+    final recentNotifications = storage.getRecentNotifications();
 
     // Check if more than 3 notifications in last 30 minutes
     final thirtyMinutesAgo =
@@ -247,10 +242,9 @@ class AdaptiveReminderService {
   Future<void> pauseReminders({
     required Duration duration,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('reminder_paused', true);
+    await storage.setReminderPaused(true);
     final resumeTime = DateTime.now().add(duration);
-    await prefs.setString('reminder_resume_time', resumeTime.toIso8601String());
+    await storage.saveReminderResumeTime(resumeTime.toIso8601String());
 
     _reminderTimer?.cancel();
 
@@ -260,21 +254,19 @@ class AdaptiveReminderService {
 
   /// Resume reminders
   Future<void> resumeReminders() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('reminder_paused', false);
-    await prefs.remove('reminder_resume_time');
+    await storage.setReminderPaused(false);
+    await storage.clearReminderResumeTime();
 
     await startSmartReminders();
   }
 
   /// Check if reminders are paused and resume if needed
   Future<void> checkAndAutoResume() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isPaused = prefs.getBool('reminder_paused') ?? false;
+    final isPaused = storage.getIsReminderPaused();
 
     if (!isPaused) return;
 
-    final resumeTimeStr = prefs.getString('reminder_resume_time');
+    final resumeTimeStr = storage.getReminderResumeTime();
     if (resumeTimeStr == null) return;
 
     final resumeTime = DateTime.parse(resumeTimeStr);
@@ -288,15 +280,13 @@ class AdaptiveReminderService {
     required String type,
     required String status,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
     final event = NotificationEvent(
       id: '${type}_${DateTime.now().millisecondsSinceEpoch}',
       sentTime: DateTime.now(),
       action: status,
     );
 
-    final recentNotifications =
-        prefs.getStringList('recent_notifications') ?? [];
+    var recentNotifications = storage.getRecentNotifications();
 
     // Keep only last 20 notifications
     if (recentNotifications.length >= 20) {
@@ -304,7 +294,7 @@ class AdaptiveReminderService {
     }
 
     recentNotifications.add(jsonEncode(event.toJson()));
-    await prefs.setStringList('recent_notifications', recentNotifications);
+    await storage.saveRecentNotifications(recentNotifications);
   }
 
   /// Dispose reminder service

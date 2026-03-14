@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/hydration_log.dart';
 import '../models/hydration_goal.dart';
-import '../models/hydration_score.dart';
+import '../services/storage_service.dart';
 
 class HydrationStatsScreen extends StatefulWidget {
   const HydrationStatsScreen({super.key});
@@ -13,7 +12,7 @@ class HydrationStatsScreen extends StatefulWidget {
 }
 
 class _HydrationStatsScreenState extends State<HydrationStatsScreen> {
-  late SharedPreferences prefs;
+  final storage = StorageService();
   HydrationGoal? goal;
   List<HydrationLog> allLogs = [];
   
@@ -26,8 +25,7 @@ class _HydrationStatsScreenState extends State<HydrationStatsScreen> {
   }
 
   Future<void> _loadData() async {
-    prefs = await SharedPreferences.getInstance();
-    final goalJson = prefs.getString('hydration_goal');
+    final goalJson = storage.getHydrationGoal();
     
     // Load all logs (if implemented)
     if (goalJson != null) {

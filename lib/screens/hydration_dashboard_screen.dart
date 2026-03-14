@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/colors.dart';
+import '../constants/strings.dart';
 import '../models/hydration_goal.dart';
 import '../models/hydration_log.dart';
 import '../models/hydration_streak.dart';
 import '../models/hydration_score.dart';
+import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../services/hydration_calculation_service.dart';
+import '../services/hydration_xp_service.dart';
 import '../services/adaptive_reminder_service.dart';
 import '../services/achievement_unlock_service.dart';
 import '../services/daily_reset_service.dart';
@@ -23,7 +25,7 @@ class HydrationDashboardScreen extends StatefulWidget {
 }
 
 class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
-  SharedPreferences? prefs;
+  final storage = StorageService();
   HydrationGoal? goal;
   List<HydrationLog> todayLogs = [];
   HydrationStreak? streak;
@@ -31,22 +33,24 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
 
   double totalConsumedMl = 0;
   int progressPercentage = 0;
+  int hydrationXpToday = 0;
 
   // Service instances
   final NotificationService _notificationService = NotificationService();
   final HydrationCalculationService _calculationService =
       HydrationCalculationService();
+  final HydrationXpService _xpService = HydrationXpService();
   final AdaptiveReminderService _reminderService = AdaptiveReminderService();
   final AchievementUnlockService _achievementService =
       AchievementUnlockService();
   final DailyResetService _resetService = DailyResetService();
 
   final List<Map<String, dynamic>> quickLogButtons = [
-    {'amount': 200, 'label': '200ml', 'icon': '🥤'},
-    {'amount': 250, 'label': 'Glass', 'icon': '🥛'},
-    {'amount': 500, 'label': 'Bottle', 'icon': '💧'},
-    {'amount': 750, 'label': '3x Glass', 'icon': '💦'},
-    {'amount': 1000, 'label': '1L', 'icon': '🌊'},
+    {'amount': 200, 'label': AppStrings.quickLog200ml, 'icon': '🥤'},
+    {'amount': 250, 'label': AppStrings.quickLogGlass, 'icon': '🥛'},
+    {'amount': 500, 'label': AppStrings.quickLogBottle, 'icon': '💧'},
+    {'amount': 750, 'label': AppStrings.quickLog3xGlass, 'icon': '💦'},
+    {'amount': 1000, 'label': AppStrings.quickLog1L, 'icon': '🌊'},
   ];
 
   @override
@@ -57,8 +61,6 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
 
   Future<void> _initializeData() async {
     try {
-      prefs = await SharedPreferences.getInstance();
-      
       // Initialize all services with error handling
       try {
         await _notificationService.initialize();
@@ -104,12 +106,11 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
   }
 
   Future<void> _loadHydrationData() async {
-    if (prefs == null) return;
-
-    final goalJson = prefs!.getString('hydration_goal');
-    final logsJson = prefs!.getStringList('hydration_logs_today') ?? [];
-    final streakJson = prefs!.getString('hydration_streak');
-    final scoreJson = prefs!.getString('hydration_score_today');
+    final goalJson = storage.getHydrationGoal();
+    final logsJson = storage.getHydrationLogsToday();
+    final streakJson = storage.getHydrationStreak();
+    final scoreJson = storage.getHydrationScoreToday();
+    final xpToday = storage.getHydrationXpToday();
 
     setState(() {
       if (goalJson != null) {
@@ -134,22 +135,13 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
       if (scoreJson != null) {
         dailyScore = HydrationScore.fromJson(jsonDecode(scoreJson));
       }
+
+      hydrationXpToday = xpToday;
     });
   }
 
   Future<void> _logWater(double amountMl, String source) async {
     try {
-      if (prefs == null) {
-        print('SharedPreferences not initialized');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('App not yet initialized. Please wait...'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
       final log = HydrationLog(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         amountMl: amountMl,
@@ -165,10 +157,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
       todayLogs.add(log);
       final logsJson =
           todayLogs.map((l) => jsonEncode(l.toJson())).toList();
-      await prefs!.setStringList('hydration_logs_today', logsJson);
-
-      // Update total consumed
-      totalConsumedMl += amountMl;
+      await storage.saveHydrationLogsToday(logsJson);
 
       // Calculate new hydration score
       await _updateHydrationScore();
@@ -176,15 +165,23 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
       // Check for goal reached
       if (goal != null && totalConsumedMl >= goal!.dailyGoalMl && 
           (totalConsumedMl - amountMl) < goal!.dailyGoalMl) {
-        // Just reached goal
+        // Just reached goal - award XP
         try {
+          final xpReward = await _xpService.awardDailyGoalXp(
+            consumedMl: totalConsumedMl.toInt(),
+            dailyGoalMl: goal!.dailyGoalMl.toInt(),
+          );
+          
           await _notificationService.sendGoalReachedNotification(
             consumedMl: totalConsumedMl.toInt(),
             goalMl: goal!.dailyGoalMl.toInt(),
             notificationId: _generateNotificationId(),
           );
+          
+          // Show XP reward
+          _showXpRewardNotification(xpReward);
         } catch (e) {
-          print('Error sending goal notification: $e');
+          print('Error awarding goal XP: $e');
         }
       }
 
@@ -210,7 +207,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
       print('Error in _logWater: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error logging water: $e'),
+          content: Text('${AppStrings.errorLoggingWater}: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -218,7 +215,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
   }
 
   Future<void> _updateHydrationScore() async {
-    if (goal == null || prefs == null) return;
+    if (goal == null) return;
 
     final intakePercentage = (totalConsumedMl / goal!.dailyGoalMl) * 100;
     int score = intakePercentage.clamp(0, 100).toInt();
@@ -238,14 +235,14 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
       dateRecorded: DateTime.now(),
     );
 
-    await prefs!.setString('hydration_score_today', jsonEncode(dailyScore.toJson()));
+    await storage.saveHydrationScoreToday(jsonEncode(dailyScore.toJson()));
   }
 
   Future<void> _checkAndUnlockAchievements() async {
-    if (goal == null || streak == null || prefs == null) return;
+    if (goal == null || streak == null) return;
 
     // Get all logs to calculate total water intake
-    final allLogsJson = prefs!.getStringList('hydration_logs_today') ?? [];
+    final allLogsJson = storage.getHydrationLogsToday();
     int totalConsumption = 0;
     for (var logJson in allLogsJson) {
       final log = HydrationLog.fromJson(jsonDecode(logJson));
@@ -294,7 +291,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
   void _showAchievementNotification(String achievementId) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('🎉 Achievement Unlocked: $achievementId'),
+        content: Text('${AppStrings.achievementUnlockedMsg}: $achievementId'),
         backgroundColor: const Color(0xFFFFD700),
         duration: const Duration(seconds: 4),
       ),
@@ -304,9 +301,19 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
   void _showLogConfirmation(double amount) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('✓ $amount ml logged!'),
+        content: Text('${AppStrings.checkMark} $amount ${AppStrings.waterLoggedMsg}'),
         backgroundColor: const Color(0xFF00D9FF),
         duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showXpRewardNotification(int xp) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('+$xp XP 🎉'),
+        backgroundColor: const Color(0xFF00D9FF),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -319,7 +326,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF121B3A),
         title: const Text(
-          'Log Custom Amount',
+          AppStrings.customAmount,
           style: TextStyle(color: Color(0xFFF5F5F5)),
         ),
         content: TextField(
@@ -342,7 +349,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text(AppStrings.cancel),
           ),
           TextButton(
             onPressed: () {
@@ -352,7 +359,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
                 Navigator.pop(context);
               }
             },
-            child: const Text('Log'),
+            child: const Text(AppStrings.log),
           ),
         ],
       ),
@@ -367,7 +374,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
         backgroundColor: const Color(0xFF0A0E27),
         elevation: 0,
         title: const Text(
-          '💧 Hydration Dashboard',
+          '💧 ${AppStrings.hydrationDashboard}',
           style: TextStyle(
             color: Color(0xFF00D9FF),
             fontSize: 24,
@@ -426,7 +433,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
           ),
           const SizedBox(height: 24),
           const Text(
-            'Welcome to Hydration Tracking!',
+            AppStrings.welcomeHydration,
             style: TextStyle(
               color: Color(0xFFF5F5F5),
               fontSize: 22,
@@ -467,7 +474,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
               ).then((_) => _initializeData());
             },
             child: const Text(
-              'Set Up Goal',
+              AppStrings.setupGoal,
               style: TextStyle(
                 color: Color(0xFF0A0E27),
                 fontSize: 16,
@@ -500,7 +507,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Today\'s Progress',
+                    AppStrings.todayProgress,
                     style: TextStyle(
                       color: Color(0xFFB0B0B0),
                       fontSize: 14,
@@ -567,7 +574,7 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Quick Log',
+          AppStrings.quickLog,
           style: TextStyle(
             color: Color(0xFFF5F5F5),
             fontSize: 16,
@@ -705,10 +712,8 @@ class _HydrationDashboardScreenState extends State<HydrationDashboardScreen> {
             children: [
               _buildStatItem('Total Logs', todayLogs.length.toString()),
               _buildStatItem(
-                'Last Log',
-                todayLogs.isNotEmpty
-                    ? _formatTime(todayLogs.last.timestamp)
-                    : '--:--',
+                'Hydration XP',
+                '+$hydrationXpToday',
               ),
               _buildStatItem(
                 'Score',
@@ -845,7 +850,7 @@ class HydrationGoalsSetupScreen extends StatefulWidget {
 }
 
 class _HydrationGoalsSetupScreenState extends State<HydrationGoalsSetupScreen> {
-  late SharedPreferences prefs;
+  final storage = StorageService();
 
   // Form fields
   double weight = 70;
@@ -867,11 +872,6 @@ class _HydrationGoalsSetupScreenState extends State<HydrationGoalsSetupScreen> {
   @override
   void initState() {
     super.initState();
-    _initializePrefs();
-  }
-
-  Future<void> _initializePrefs() async {
-    prefs = await SharedPreferences.getInstance();
   }
 
   Future<void> _saveGoal() async {
@@ -888,7 +888,7 @@ class _HydrationGoalsSetupScreenState extends State<HydrationGoalsSetupScreen> {
       updatedAt: DateTime.now(),
     );
 
-    await prefs.setString('hydration_goal', jsonEncode(goal.toJson()));
+    await storage.saveHydrationGoal(jsonEncode(goal.toJson()));
 
     // Create initial streak
     final streak = HydrationStreak(
@@ -898,7 +898,7 @@ class _HydrationGoalsSetupScreenState extends State<HydrationGoalsSetupScreen> {
       lastCompletionDate: DateTime.now(),
       streakDates: [],
     );
-    await prefs.setString('hydration_streak', jsonEncode(streak.toJson()));
+    await storage.saveHydrationStreak(jsonEncode(streak.toJson()));
 
     // Initialize reminder service
     final reminderService = AdaptiveReminderService();
@@ -1213,7 +1213,7 @@ class _HydrationGoalsSetupScreenState extends State<HydrationGoalsSetupScreen> {
           Switch(
             value: autoCalculate,
             onChanged: (value) => setState(() => autoCalculate = value),
-            activeColor: const Color(0xFF00D9FF),
+            activeThumbColor: const Color(0xFF00D9FF),
             activeTrackColor: const Color(0xFF00D9FF).withOpacity(0.3),
           ),
         ],

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../constants/colors.dart';
+import '../constants/strings.dart';
 import '../models/achievement.dart';
 import '../models/hydration_goal.dart';
 import '../models/hydration_streak.dart';
 import '../models/hydration_log.dart';
+import '../services/storage_service.dart';
 import '../widgets/hydration_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -64,9 +65,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadDailyStreak() async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastLoginDateString = prefs.getString('last_login_date');
-    final savedStreakCount = prefs.getInt('daily_streak') ?? 0;
+    final storage = StorageService();
+    final lastLoginDateString = storage.getLastLoginDate();
+    final savedStreakCount = storage.getDailyStreak();
 
     final today = DateTime.now();
     final todayDateString = '${today.year}-${today.month}-${today.day}';
@@ -83,8 +84,8 @@ class _HomeScreenState extends State<HomeScreen> {
         dailyStreak = lastLoginDateString == null ? 1 : 1; // Reset if gap
       }
 
-      await prefs.setString('last_login_date', todayDateString);
-      await prefs.setInt('daily_streak', dailyStreak);
+      await storage.saveLastLoginDate(todayDateString);
+      await storage.saveDailyStreak(dailyStreak);
     } else {
       dailyStreak = savedStreakCount;
     }
@@ -93,11 +94,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadTodayXp() async {
-    final prefs = await SharedPreferences.getInstance();
+    final storage = StorageService();
     final today = DateTime.now();
-    final dateKey = 'quests_${today.year}_${today.month}_${today.day}';
 
-    final savedQuestsJsonData = prefs.getString(dateKey);
+    final savedQuestsJsonData = storage.getQuestData(today);
     if (savedQuestsJsonData != null) {
       final decodedQuestList = jsonDecode(savedQuestsJsonData) as List;
       todayXp = 0;
@@ -113,24 +113,28 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // Load and apply total experience from SharedPreferences
+    // Add hydration XP to today's XP
+    final hydrationXpToday = storage.getHydrationXpToday();
+    todayXp += hydrationXpToday;
+
+    // Load and apply total experience
     await _loadTotalExperience();
 
     setState(() {});
   }
 
   Future<void> _loadTotalExperience() async {
-    final prefs = await SharedPreferences.getInstance();
-    experience = prefs.getInt('total_experience') ?? 450;
-    level = prefs.getInt('player_level') ?? 1;
-    maxExperience = prefs.getInt('max_experience') ?? 1000;
+    final storage = StorageService();
+    experience = storage.getTotalExperience();
+    level = storage.getPlayerLevel();
+    maxExperience = storage.getMaxExperience();
   }
 
   Future<void> _saveTotalExperience() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('total_experience', experience);
-    await prefs.setInt('player_level', level);
-    await prefs.setInt('max_experience', maxExperience);
+    final storage = StorageService();
+    await storage.saveTotalExperience(experience);
+    await storage.savePlayerLevel(level);
+    await storage.saveMaxExperience(maxExperience);
   }
 
   Future<void> _addExperience(int xpToAdd) async {
@@ -148,14 +152,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadWeeklyStats() async {
-    final prefs = await SharedPreferences.getInstance();
+    final storage = StorageService();
     weeklyXp = 0;
 
     for (int i = 0; i < 7; i++) {
       final date = DateTime.now().subtract(Duration(days: i));
-      final dateKey = 'quests_${date.year}_${date.month}_${date.day}';
-
-      final savedQuestsJsonData = prefs.getString(dateKey);
+      final savedQuestsJsonData = storage.getQuestData(date);
       if (savedQuestsJsonData != null) {
         final decodedQuestList = jsonDecode(savedQuestsJsonData) as List;
         for (var quest in decodedQuestList) {
@@ -231,17 +233,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadHydrationData() async {
-    final prefs = await SharedPreferences.getInstance();
+    final storage = StorageService();
 
     // Load goal
-    final goalJson = prefs.getString('hydration_goal');
+    final goalJson = storage.getHydrationGoal();
     if (goalJson != null) {
       final goal = HydrationGoal.fromJson(jsonDecode(goalJson));
       dailyGoalMl = goal.dailyGoalMl;
     }
 
     // Load today's logs
-    final logsJson = prefs.getStringList('hydration_logs_today') ?? [];
+    final logsJson = storage.getHydrationLogsToday();
     totalConsumedMl = 0;
     for (var logJson in logsJson) {
       final log = HydrationLog.fromJson(jsonDecode(logJson));
@@ -249,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // Load streak
-    final streakJson = prefs.getString('hydration_streak');
+    final streakJson = storage.getHydrationStreak();
     if (streakJson != null) {
       final streak = HydrationStreak.fromJson(jsonDecode(streakJson));
       hydrationStreak = streak.currentStreak;
