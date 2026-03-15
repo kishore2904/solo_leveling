@@ -343,6 +343,24 @@ class StorageService {
     return _prefs.getString(_keyAppStartDate);
   }
 
+  // ============ REMINDER TASKS ============
+  static const String _keyReminderTasks = 'reminder_tasks';
+
+  /// Save reminder tasks data
+  Future<bool> saveReminderData(String remindersJson) async {
+    return await _prefs.setString(_keyReminderTasks, remindersJson);
+  }
+
+  /// Get reminder tasks data
+  String? getReminderData() {
+    return _prefs.getString(_keyReminderTasks);
+  }
+
+  /// Clear all reminder tasks
+  Future<bool> clearReminderData() async {
+    return await _prefs.remove(_keyReminderTasks);
+  }
+
   // ============ BULK OPERATIONS ============
   /// Get all storage keys (useful for debugging and cleanup)
   Set<String> getAllKeys() {
