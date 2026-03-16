@@ -9,6 +9,9 @@ class ReminderTask {
   bool isCompleted;
   DateTime? completedAt;
   bool reminderSent;
+  final String? recurrence; // 'none', 'daily', 'weekly', 'monthly'
+  final String? parentReminderId; // For recurring instances, links to parent
+  int completionCount; // Track how many times this has been completed
 
   ReminderTask({
     required this.id,
@@ -21,6 +24,9 @@ class ReminderTask {
     this.isCompleted = false,
     this.completedAt,
     this.reminderSent = false,
+    this.recurrence = 'none',
+    this.parentReminderId,
+    this.completionCount = 0,
   });
 
   // Convert to JSON for local storage
@@ -36,6 +42,9 @@ class ReminderTask {
       'isCompleted': isCompleted,
       'completedAt': completedAt?.toIso8601String(),
       'reminderSent': reminderSent,
+      'recurrence': recurrence ?? 'none',
+      'parentReminderId': parentReminderId,
+      'completionCount': completionCount,
     };
   }
 
@@ -54,6 +63,9 @@ class ReminderTask {
           ? DateTime.parse(json['completedAt'])
           : null,
       reminderSent: json['reminderSent'] ?? false,
+      recurrence: json['recurrence'] ?? 'none',
+      parentReminderId: json['parentReminderId'],
+      completionCount: json['completionCount'] ?? 0,
     );
   }
 

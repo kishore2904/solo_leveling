@@ -1,25 +1,42 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:convert';
 import '../models/reminder_task.dart';
 import '../services/storage_service.dart';
 import '../services/notification_service.dart';
 import '../constants/colors.dart';
+import 'add_task_screen.dart';
 
 class RemindersScreen extends StatefulWidget {
   const RemindersScreen({super.key});
 
   @override
-  State<RemindersScreen> createState() => _RemindersScreenState();
+  State<RemindersScreen> createState() => RemindersScreenState();
 }
 
-class _RemindersScreenState extends State<RemindersScreen> {
+class RemindersScreenState extends State<RemindersScreen> with WidgetsBindingObserver {
   List<ReminderTask> _reminders = [];
   bool _isLoading = true;
+  final Map<String, bool> _expandedDescriptions = {}; // Track which descriptions are expanded
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadReminders();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadReminders();
+    }
   }
 
   Future<void> _loadReminders() async {
@@ -50,6 +67,15 @@ class _RemindersScreenState extends State<RemindersScreen> {
         );
       }
     }
+  }
+
+  // Public method for external access (e.g., from GlobalKey)
+  Future<void> refreshReminders() async {
+    await _loadReminders();
+  }
+
+  int getOverdueCount() {
+    return _reminders.where((r) => r.isOverdue() && !r.isCompleted).length;
   }
 
   Future<void> _deleteReminder(ReminderTask reminder) async {
@@ -126,6 +152,79 @@ class _RemindersScreenState extends State<RemindersScreen> {
     }
   }
 
+  // Handler for overflow menu actions
+  Future<void> _handleRemindersMenuAction(
+      String action, ReminderTask reminder) async {
+    _triggerHapticFeedback();
+    
+    switch (action) {
+      case 'complete':
+        await _completeReminder(reminder);
+        break;
+      case 'edit':
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AddTaskScreen(
+              taskId: reminder.id,
+              taskTitle: reminder.title,
+              taskDescription: reminder.description,
+              reminderDateTime: reminder.scheduledTime,
+            ),
+          ),
+        );
+        if (result == true) {
+          _loadReminders();
+        }
+        break;
+      case 'delete':
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: AppColors.darkBgSecondary,
+            title: const Text(
+              'Delete Reminder?',
+              style: TextStyle(color: AppColors.textPrimary),
+            ),
+            content: Text(
+              'Are you sure you want to delete "${reminder.title}"?',
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: AppColors.neonBlue),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _deleteReminder(reminder);
+                },
+                child: const Text(
+                  'Delete',
+                  style: TextStyle(color: AppColors.error),
+                ),
+              ),
+            ],
+          ),
+        );
+        break;
+    }
+  }
+
+  // Haptic feedback for interactions
+  Future<void> _triggerHapticFeedback() async {
+    try {
+      await HapticFeedback.mediumImpact();
+    } catch (e) {
+      // Haptic feedback not available on some devices
+      print('Haptic feedback not available: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -182,282 +281,353 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       final reminder = _reminders[index];
                       final isOverdue = reminder.isOverdue();
                       final isCompleted = reminder.isCompleted;
+                      final isToday = reminder.scheduledTime.year == DateTime.now().year &&
+                          reminder.scheduledTime.month == DateTime.now().month &&
+                          reminder.scheduledTime.day == DateTime.now().day;
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: isCompleted
-                              ? AppColors.darkBgSecondary
-                              : isOverdue
-                                  ? AppColors.error.withOpacity(0.1)
-                                  : AppColors.darkBgSecondary,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isCompleted
-                                ? AppColors.textSecondary
-                                : isOverdue
-                                    ? AppColors.error
-                                    : AppColors.neonBlue,
-                            width: 1.5,
+                      return Dismissible(
+                        key: Key(reminder.id),
+                        direction: DismissDirection.horizontal,
+                        // Swipe right to mark as complete
+                        onDismissed: (direction) async {
+                          final reminderIndex = _reminders.indexOf(reminder);
+                          // Remove immediately to dismiss the widget
+                          _reminders.removeAt(reminderIndex);
+                          setState(() {});
+                          
+                          if (direction == DismissDirection.startToEnd) {
+                            await _completeReminderSilent(reminder);
+                          } else if (direction == DismissDirection.endToStart) {
+                            await _deleteReminderWithUndo(reminder, reminderIndex);
+                          }
+                        },
+                        background: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.only(left: 16),
+                          child: const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Icon(Icons.check_circle, color: Colors.white, size: 28),
                           ),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Title and Priority
-                              Row(
-                                children: [
-                                  Text(
-                                    reminder.icon,
-                                    style: const TextStyle(fontSize: 24),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          reminder.title,
-                                          style: TextStyle(
-                                            color: isCompleted
-                                                ? AppColors.textSecondary
-                                                : AppColors.textPrimary,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            decoration: isCompleted
-                                                ? TextDecoration.lineThrough
-                                                : null,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 8, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: _getPriorityColor(
-                                                        reminder.priority)
-                                                    .withOpacity(0.2),
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                reminder.priority,
-                                                style: TextStyle(
-                                                  color: _getPriorityColor(
-                                                      reminder.priority),
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 8, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.neonBlue
-                                                    .withOpacity(0.2),
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                reminder.category,
-                                                style: const TextStyle(
-                                                  color: AppColors.neonBlue,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (isCompleted)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8),
-                                      child: Icon(
-                                        Icons.check_circle,
-                                        color: AppColors.success,
-                                        size: 24,
-                                      ),
-                                    ),
-                                  if (isOverdue && !isCompleted)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 8),
-                                      child: Icon(
-                                        Icons.warning,
-                                        color: AppColors.error,
-                                        size: 24,
-                                      ),
-                                    ),
-                                ],
-                              ),
-
-                              // Description
-                              if (reminder.description.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 12),
-                                  child: Text(
-                                    reminder.description,
-                                    style: TextStyle(
-                                      color: isCompleted
-                                          ? AppColors.textSecondary
-                                          : AppColors.textSecondary,
-                                      fontSize: 13,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-
-                              // Time info
-                              Padding(
-                                padding: const EdgeInsets.only(top: 12),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
+                        secondaryBackground: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 16),
+                          child: const Align(
+                            alignment: Alignment.centerRight,
+                            child: Icon(Icons.delete, color: Colors.white, size: 28),
+                          ),
+                        ),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: isCompleted
+                                ? AppColors.darkBgSecondary
+                                : isOverdue
+                                    ? AppColors.error.withOpacity(0.15)
+                                    : isToday
+                                        ? const Color(0xFFFFB74D).withOpacity(0.1)
+                                        : AppColors.darkBgSecondary,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isCompleted
+                                  ? AppColors.textSecondary
+                                  : isOverdue
+                                      ? AppColors.error
+                                      : isToday
+                                          ? const Color(0xFFFFB74D)
+                                          : AppColors.neonBlue,
+                              width: 2,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Compact Header Row
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      '⏰ ${_formatDateTime(reminder.scheduledTime)}',
-                                      style: TextStyle(
-                                        color: isOverdue && !isCompleted
-                                            ? AppColors.error
-                                            : AppColors.neonBlue,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
+                                    // Status indicator (left edge)
+                                    Container(
+                                      width: 4,
+                                      height: 60,
+                                      decoration: BoxDecoration(
+                                        color: isCompleted
+                                            ? AppColors.success
+                                            : isOverdue
+                                                ? AppColors.error
+                                                : isToday
+                                                    ? const Color(0xFFFFB74D)
+                                                    : AppColors.neonBlue,
+                                        borderRadius: BorderRadius.circular(2),
                                       ),
                                     ),
-                                    Text(
-                                      reminder.getScheduledTimeDisplay(),
-                                      style: TextStyle(
-                                        color: isOverdue && !isCompleted
-                                            ? AppColors.error
-                                            : AppColors.textSecondary,
-                                        fontSize: 12,
+                                    const SizedBox(width: 12),
+                                    // Title and time
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          // Title with icon
+                                          Row(
+                                            children: [
+                                              Text(
+                                                reminder.icon,
+                                                style: const TextStyle(fontSize: 18),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  reminder.title,
+                                                  style: TextStyle(
+                                                    color: isCompleted
+                                                        ? AppColors.textSecondary
+                                                        : AppColors.textPrimary,
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.bold,
+                                                    decoration: isCompleted
+                                                        ? TextDecoration.lineThrough
+                                                        : null,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          // Time and status
+                                          Row(
+                                            children: [
+                                              Text(
+                                                '⏰ ${_formatDateTime(reminder.scheduledTime)}',
+                                                style: TextStyle(
+                                                  color: isOverdue && !isCompleted
+                                                      ? AppColors.error
+                                                      : isToday
+                                                          ? const Color(0xFFFFB74D)
+                                                          : AppColors.neonBlue,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              if (isCompleted)
+                                                const Icon(Icons.check_circle,
+                                                    color: AppColors.success, size: 14),
+                                              if (isOverdue && !isCompleted)
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                          horizontal: 4, vertical: 1),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.error,
+                                                    borderRadius:
+                                                        BorderRadius.circular(2),
+                                                  ),
+                                                  child: const Text(
+                                                    '⚠',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 10,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
+                                    ),
+                                    // Overflow menu
+                                    PopupMenuButton<String>(
+                                      onSelected: (value) {
+                                        _handleRemindersMenuAction(value, reminder);
+                                      },
+                                      itemBuilder: (BuildContext context) {
+                                        return [
+                                          if (!isCompleted)
+                                            const PopupMenuItem<String>(
+                                              value: 'complete',
+                                              child: Row(
+                                                children: [
+                                                  Text('✅ Mark Done',
+                                                      style: TextStyle(fontSize: 13)),
+                                                ],
+                                              ),
+                                            ),
+                                          const PopupMenuItem<String>(
+                                            value: 'edit',
+                                            child: Row(
+                                              children: [
+                                                Text('✏️ Edit',
+                                                    style: TextStyle(fontSize: 13)),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem<String>(
+                                            value: 'delete',
+                                            child: Row(
+                                              children: [
+                                                Text('🗑️ Delete',
+                                                    style: TextStyle(
+                                                        fontSize: 13, color: Colors.red)),
+                                              ],
+                                            ),
+                                          ),
+                                        ];
+                                      },
+                                      offset: const Offset(0, 40),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      tooltip: 'More options',
                                     ),
                                   ],
                                 ),
-                              ),
-
-                              // Action buttons
-                              if (!isCompleted)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 12),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      ElevatedButton(
-                                        onPressed: () =>
-                                            _completeReminder(reminder),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              AppColors.success.withOpacity(
-                                                  0.2),
-                                          side: const BorderSide(
-                                            color: AppColors.success,
-                                            width: 1,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 8),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          '✅ Mark Done',
-                                          style: TextStyle(
-                                            color: AppColors.success,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: () {
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) => AlertDialog(
-                                              backgroundColor:
-                                                  AppColors.darkBgSecondary,
-                                              title: const Text(
-                                                'Delete Reminder?',
-                                                style: TextStyle(
-                                                  color: AppColors.textPrimary,
-                                                ),
+                                // Collapsible Description
+                                if (reminder.description.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                        top: 8, left: 0, right: 0),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        GestureDetector(
+                                          onTap: () {
+                                            _triggerHapticFeedback();
+                                            setState(() {
+                                              _expandedDescriptions[reminder.id] =
+                                                  !(_expandedDescriptions[reminder.id] ??
+                                                      false);
+                                            });
+                                          },
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                _expandedDescriptions[reminder.id] ??
+                                                        false
+                                                    ? Icons.expand_less
+                                                    : Icons.expand_more,
+                                                color: AppColors.textSecondary,
+                                                size: 18,
                                               ),
-                                              content: Text(
-                                                'Are you sure you want to delete "${reminder.title}"?',
-                                                style: const TextStyle(
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Details',
+                                                style: TextStyle(
                                                   color:
                                                       AppColors.textSecondary,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                               ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(context),
-                                                  child: const Text(
-                                                    'Cancel',
-                                                    style: TextStyle(
-                                                      color:
-                                                          AppColors.neonBlue,
-                                                    ),
-                                                  ),
-                                                ),
-                                                TextButton(
-                                                  onPressed: () {
-                                                    Navigator.pop(context);
-                                                    _deleteReminder(reminder);
-                                                  },
-                                                  child: const Text(
-                                                    'Delete',
-                                                    style: TextStyle(
-                                                      color: AppColors.error,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppColors.error
-                                              .withOpacity(0.2),
-                                          side: const BorderSide(
-                                            color: AppColors.error,
-                                            width: 1,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 12, vertical: 8),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
+                                            ],
                                           ),
                                         ),
-                                        child: const Text(
-                                          '🗑️ Delete',
+                                        if (_expandedDescriptions[reminder.id] ??
+                                            false)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 8),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(10),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.darkBg
+                                                    .withOpacity(0.5),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                reminder.description,
+                                                style: TextStyle(
+                                                  color: isCompleted
+                                                      ? AppColors.textSecondary
+                                                      : AppColors.textSecondary,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                // Compact tags row
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: _getPriorityColor(
+                                                  reminder.priority)
+                                              .withOpacity(0.2),
+                                          borderRadius:
+                                              BorderRadius.circular(3),
+                                        ),
+                                        child: Text(
+                                          reminder.priority,
                                           style: TextStyle(
-                                            color: AppColors.error,
-                                            fontSize: 12,
+                                            color: _getPriorityColor(
+                                                reminder.priority),
+                                            fontSize: 10,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                       ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.neonBlue
+                                              .withOpacity(0.2),
+                                          borderRadius:
+                                              BorderRadius.circular(3),
+                                        ),
+                                        child: Text(
+                                          reminder.category,
+                                          style: const TextStyle(
+                                            color: AppColors.neonBlue,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ),
+                                      if (reminder.recurrence != 'none' &&
+                                          reminder.recurrence != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFFB74D)
+                                                .withOpacity(0.2),
+                                            borderRadius:
+                                                BorderRadius.circular(3),
+                                          ),
+                                          child: Text(
+                                            'Repeats ${reminder.recurrence}',
+                                            style: const TextStyle(
+                                              color: Color(0xFFFFB74D),
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -520,6 +690,110 @@ class _RemindersScreenState extends State<RemindersScreen> {
         return Colors.green;
       default:
         return AppColors.textSecondary;
+    }
+  }
+
+  String _getDueDateLabel(ReminderTask reminder) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final scheduledDate = DateTime(
+      reminder.scheduledTime.year,
+      reminder.scheduledTime.month,
+      reminder.scheduledTime.day,
+    );
+
+    if (scheduledDate == today) {
+      return '🟡 Due today';
+    } else if (scheduledDate == tomorrow) {
+      return '🟢 Tomorrow';
+    } else if (scheduledDate.isBefore(today)) {
+      return '🔴 Overdue';
+    } else {
+      return '🟢 Upcoming';
+    }
+  }
+
+  Future<void> _deleteReminderWithUndo(ReminderTask reminder, int originalIndex) async {
+    try {
+      final storage = StorageService();
+
+      await storage.saveReminderData(jsonEncode(
+        _reminders.map((r) => r.toJson()).toList(),
+      ));
+
+      // Cancel the notification
+      await NotificationService()
+          .cancelNotification(reminder.id.hashCode);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Reminder "${reminder.title}" deleted'),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'UNDO',
+              textColor: Colors.white,
+              onPressed: () async {
+                // Restore the reminder
+                _reminders.insert(originalIndex, reminder);
+                await storage.saveReminderData(jsonEncode(
+                  _reminders.map((r) => r.toJson()).toList(),
+                ));
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('✅ Reminder restored'),
+                    backgroundColor: AppColors.success,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error deleting reminder: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _completeReminderSilent(ReminderTask reminder) async {
+    try {
+      reminder.isCompleted = true;
+      reminder.completedAt = DateTime.now();
+
+      final storage = StorageService();
+      await storage.saveReminderData(jsonEncode(
+        _reminders.map((r) => r.toJson()).toList(),
+      ));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Reminder "${reminder.title}" marked complete'),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error updating reminder: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 }

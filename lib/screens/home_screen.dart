@@ -6,9 +6,12 @@ import '../models/achievement.dart';
 import '../models/hydration_goal.dart';
 import '../models/hydration_streak.dart';
 import '../models/hydration_log.dart';
+import '../models/reminder_task.dart';
 import '../services/storage_service.dart';
 import '../services/level_progression_service.dart';
 import '../widgets/index.dart';
+import 'add_task_screen.dart';
+import 'reminders_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String playerName;
@@ -19,7 +22,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => HomeScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final levelService = LevelProgressionService();
 
   int level = 1;
@@ -52,11 +55,29 @@ class HomeScreenState extends State<HomeScreen> {
     false,
     true,
   ]; // Mon-Sun
+  
+  // Upcoming Reminders
+  List<ReminderTask> upcomingReminders = [];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadAllData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh upcoming reminders when app returns to foreground
+      _loadUpcomingReminders();
+    }
   }
 
   Future<void> _loadAllData() async {
@@ -65,6 +86,7 @@ class HomeScreenState extends State<HomeScreen> {
     await _loadWeeklyStats();
     await _loadAchievements();
     await _loadHydrationData();
+    await _loadUpcomingReminders();
   }
 
   Future<void> _loadDailyStreak() async {
@@ -310,6 +332,49 @@ class HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _loadUpcomingReminders() async {
+    try {
+      final storage = StorageService();
+      final savedRemindersJson = storage.getReminderData();
+      List<ReminderTask> reminders = [];
+
+      if (savedRemindersJson != null) {
+        final remindersList = jsonDecode(savedRemindersJson) as List;
+        for (var reminderJson in remindersList) {
+          final reminder = ReminderTask.fromJson(reminderJson);
+          // Only show uncompleted reminders
+          if (!reminder.isCompleted) {
+            reminders.add(reminder);
+          }
+        }
+      }
+
+      // Filter reminders for today and next 7 days
+      final now = DateTime.now();
+      final sevenDaysLater = now.add(const Duration(days: 7));
+      
+      upcomingReminders = reminders.where((reminder) {
+        return reminder.scheduledTime.isAfter(
+          DateTime(now.year, now.month, now.day),
+        ) && reminder.scheduledTime.isBefore(
+          DateTime(sevenDaysLater.year, sevenDaysLater.month, sevenDaysLater.day + 1),
+        );
+      }).toList();
+
+      // Sort by scheduled time
+      upcomingReminders.sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+      
+      // Keep only the first 5 upcoming reminders
+      if (upcomingReminders.length > 5) {
+        upcomingReminders = upcomingReminders.sublist(0, 5);
+      }
+
+      setState(() {});
+    } catch (e) {
+      print('Error loading upcoming reminders: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -448,6 +513,10 @@ class HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 24),
 
+                // Upcoming Reminders Dashboard
+                _buildUpcomingRemindersCard(),
+                const SizedBox(height: 24),
+
                 // Weekly Stats
                 _buildWeeklyStatsCard(),
                 const SizedBox(height: 24),
@@ -495,6 +564,177 @@ class HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildUpcomingRemindersCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.neonBlue.withOpacity(0.15),
+            AppColors.neonCyan.withOpacity(0.1),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.neonBlue.withOpacity(0.5),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '📋 Upcoming Tasks',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.neonBlue,
+                ),
+              ),
+              Text(
+                '${upcomingReminders.length} tasks',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.white54,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (upcomingReminders.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: const Text(
+                '✨ No upcoming tasks! You\'re all set.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white54,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            )
+          else
+            Column(
+              children: List.generate(upcomingReminders.length, (index) {
+                final reminder = upcomingReminders[index];
+                final isToday = reminder.scheduledTime.year == DateTime.now().year &&
+                    reminder.scheduledTime.month == DateTime.now().month &&
+                    reminder.scheduledTime.day == DateTime.now().day;
+                final isTomorrow = reminder.scheduledTime.year == DateTime.now().add(const Duration(days: 1)).year &&
+                    reminder.scheduledTime.month == DateTime.now().add(const Duration(days: 1)).month &&
+                    reminder.scheduledTime.day == DateTime.now().add(const Duration(days: 1)).day;
+                
+                final dateLabel = isToday
+                    ? 'Today'
+                    : isTomorrow
+                        ? 'Tomorrow'
+                        : '${reminder.scheduledTime.day}/${reminder.scheduledTime.month}';
+                
+                return Column(
+                  children: [
+                    if (index > 0) const Divider(color: Colors.white12, height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          // Task Icon
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppColors.neonBlue.withOpacity(0.2),
+                            ),
+                            child: Text(reminder.icon, style: const TextStyle(fontSize: 12)),
+                          ),
+                          const SizedBox(width: 12),
+                          // Task Info
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  reminder.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '$dateLabel · ${reminder.scheduledTime.hour.toString().padLeft(2, '0')}:${reminder.scheduledTime.minute.toString().padLeft(2, '0')}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Priority Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: reminder.priority == 'High'
+                                  ? const Color(0xFFFF6B6B).withOpacity(0.2)
+                                  : reminder.priority == 'Medium'
+                                      ? AppColors.neonBlue.withOpacity(0.2)
+                                      : Colors.green.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              reminder.priority == 'High'
+                                  ? '🔴'
+                                  : reminder.priority == 'Medium'
+                                      ? '🟡'
+                                      : '🟢',
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ),
+          if (upcomingReminders.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pushNamed('/reminders');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.neonBlue.withOpacity(0.2),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+                child: const Text(
+                  'View All Tasks',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.neonBlue,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
